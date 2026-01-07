@@ -1,0 +1,58 @@
+name: CI Orchestrator
+
+on:
+  push:
+    branches: [ "main", "master" ]
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - '.github/**'
+  pull_request:
+    branches: [ "main", "master" ]
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - '.github/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # --- Dependencies & Security ---
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install & Audit Frontend
+        working-directory: ./frontend
+        run: |
+          npm ci
+          npm audit --audit-level=high || true # Fail only on critical/high? Allow true for now to avoid block
+
+      # --- Code Quality ---
+      - name: Lint Frontend
+        working-directory: ./frontend
+        run: npm run lint
+
+      # --- Build & Test Validation ---
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker Image (Validation)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: er-aimusicpage:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

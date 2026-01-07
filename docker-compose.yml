@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "13030:13030"
+    environment:
+      - PORT=13030
+      - DATABASE_URL=sqlite:////app/data/er_music.db
+      - ACCESS_PIN=12345678
+      - PROJECT_NAME=ER-AIMusicPage
+    volumes:
+      # Map host uploads to container uploads
+      # Backend code saves to "static/uploads" relative to execution or "app/..."
+      # In Dockerfile: WORKDIR /app. 
+      # Backend structure: /app/app/api/... and /app/static/uploads
+      - ./backend/static/uploads:/app/static/uploads
+      - ./data:/app/data

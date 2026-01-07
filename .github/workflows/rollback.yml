@@ -1,0 +1,31 @@
+name: Rollback Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_tag:
+        description: 'Version Tag to Rollback (e.g., v2024.01.1)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Delete Release
+        uses: dev-drprasad/delete-tag-and-release@v1.1
+        with:
+          delete_release: true
+          tag_name: ${{ inputs.version_tag }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Notification
+        run: echo "Rollback of ${{ inputs.version_tag }} completed. Docker images must be managed manually on Hub."
