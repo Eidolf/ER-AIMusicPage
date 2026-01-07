@@ -39,10 +39,14 @@ echo "This uses Docker to simulate the CI environment. It may take a moment."
 SECRETS_ARG=""
 if [ -f .secrets ]; then
     if grep -q "your_docker_hub_username" .secrets; then
-        echo -e "${YELLOW}⚠ .secrets file contains default placeholders. Skipping secrets injection to avoid Auth errors.${NC}"
+        echo -e "${YELLOW}⚠ .secrets file contains default placeholders. Forcing empty secrets to avoid Auth errors.${NC}"
+        SECRETS_ARG="--secret-file /dev/null"
     else
         SECRETS_ARG="--secret-file .secrets"
     fi
+else
+     # Explicitly use /dev/null so act doesn't try to find something else
+    SECRETS_ARG="--secret-file /dev/null"
 fi
 
 # Run act on the specific workflow
