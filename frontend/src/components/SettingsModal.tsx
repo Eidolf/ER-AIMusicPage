@@ -31,12 +31,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     });
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [scanning, setScanning] = useState(false);
 
     useEffect(() => {
         if (isOpen) {
             fetchSettings();
         }
     }, [isOpen]);
+
+    const handleScan = async () => {
+        setScanning(true);
+        const token = localStorage.getItem('token');
+        try {
+            const res = await fetch('/api/v1/media/scan', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                alert(data.message);
+            } else {
+                alert("Scan failed");
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Error scanning storage");
+        } finally {
+            setScanning(false);
+        }
+    };
 
     const fetchSettings = async () => {
         setLoading(true);
@@ -226,6 +249,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                             </p>
                         </div>
 
+                        <h4 style={{ margin: '1rem 0 0', color: '#0f0' }}>Storage & Maintenance</h4>
+                        <div className="form-group">
+                            <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem' }}>Recover Missing Files</label>
+                            <button
+                                type="button"
+                                onClick={handleScan}
+                                style={{
+                                    width: '100%',
+                                    padding: '0.8rem',
+                                    background: 'rgba(0, 255, 0, 0.1)',
+                                    border: '1px solid #0f0',
+                                    color: '#0f0',
+                                    borderRadius: '8px',
+                                    cursor: scanning ? 'not-allowed' : 'pointer',
+                                    fontWeight: 'bold',
+                                    transition: 'all 0.3s ease'
+                                }}
+                                disabled={scanning}
+                            >
+                                {scanning ? 'SCANNING...' : 'SCAN STORAGE FOR MISSING FILES'}
+                            </button>
+                            <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.3rem' }}>
+                                Checks the upload folder for files not in the database and adds them.
+                            </p>
+                        </div>
+
                         <button
                             type="submit"
                             className="neon-btn"
@@ -236,6 +285,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                             {saving ? 'SAVING...' : 'SAVE SETTINGS'}
                         </button>
                     </form>
+
                 )}
             </div>
             <style>{`

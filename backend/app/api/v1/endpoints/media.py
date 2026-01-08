@@ -13,6 +13,62 @@ router = APIRouter()
 UPLOAD_DIR = "static/uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+@router.post("/scan")
+async def scan_storage(
+    session: Session = Depends(get_session),
+    role: str = Depends(get_current_user_role)
+):
+    """
+    Scans the storage directory for files that are not in the database and adds them.
+    Only accessible by admins.
+    """
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    added_count = 0
+    try:
+        # Get all filenames currently in DB
+        statement = select(Media.filename)
+        existing_filenames = set(session.exec(statement).all())
+        
+        # Iterate over files in storage
+        if os.path.exists(UPLOAD_DIR):
+            for filename in os.listdir(UPLOAD_DIR):
+                if filename in existing_filenames:
+                    continue
+                
+                # Simple type detection
+                lower_name = filename.lower()
+                media_type = None
+                if lower_name.endswith(('.mp4', '.webm', '.mov', '.avi', '.mkv')):
+                    media_type = 'video'
+                elif lower_name.endswith(('.mp3', '.wav', '.ogg', '.m4a')):
+                    media_type = 'audio'
+                
+                if media_type:
+                    # Add to DB
+                    safe_filename = filename # Already on disk, assume safe or use as is
+                    url = f"/limit_static/uploads/{safe_filename}"
+                    
+                    new_media = Media(
+                        filename=safe_filename,
+                        url=url,
+                        media_type=media_type,
+                        title=safe_filename, # Default title
+                        genre="Recovered" # Default genre
+                    )
+                    session.add(new_media)
+                    added_count += 1
+            
+            if added_count > 0:
+                session.commit()
+                
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error scanning storage: {str(e)}")
+        
+    return {"message": f"Scan complete. Added {added_count} new files.", "added_count": added_count}
+
+
 @router.post("/upload", response_model=MediaRead)
 async def upload_file(
     file: UploadFile = File(...),
