@@ -18,4 +18,7 @@ class SystemSettings(SQLModel, table=True):
     # Admin Settings
     admin_pin: Optional[str] = None
     
+    # System Settings
+    domain: Optional[str] = None
+    
     # Singleton marker - ensuring we check for ID=1 usually

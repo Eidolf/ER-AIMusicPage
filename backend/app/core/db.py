@@ -14,3 +14,17 @@ def get_session():
 
 def init_db():
     SQLModel.metadata.create_all(engine)
+    
+    # Manual Migration for 'domain' column in 'systemsettings'
+    from sqlalchemy import text
+    try:
+        with Session(engine) as session:
+            try:
+                # Check for column existence (SQLite/Postgres friendly)
+                session.exec(text("SELECT domain FROM systemsettings LIMIT 1"))
+            except Exception:
+                # Add column if missing
+                session.exec(text("ALTER TABLE systemsettings ADD COLUMN domain VARCHAR"))
+                session.commit()
+    except Exception as e:
+        print(f"Migration warning: {e}")

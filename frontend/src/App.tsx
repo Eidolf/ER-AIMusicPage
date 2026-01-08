@@ -109,7 +109,7 @@ function App() {
             <main>
                 <section style={{ marginBottom: '4rem' }}>
                     <h2 style={{ color: 'var(--neon-cyan)', marginBottom: '1.5rem' }}>LATEST DROPS</h2>
-                    <VideoGrid videos={videos} audios={audios} />
+                    <VideoGrid videos={videos} audios={audios} role={role} onRefresh={fetchMedia} />
                 </section>
 
                 {role === 'admin' && (

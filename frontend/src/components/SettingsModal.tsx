@@ -15,6 +15,7 @@ interface SettingsData {
     sender_email: string;
     sender_name: string;
     admin_pin?: string;
+    domain?: string;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
@@ -25,7 +26,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         smtp_password: '',
         smtp_tls: true,
         sender_email: '',
-        sender_name: 'ER Music Vault'
+        sender_name: 'ER Music Vault',
+        domain: ''
     });
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -113,7 +115,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 ) : (
                     <form onSubmit={handleSave} style={{ display: 'grid', gap: '1rem' }}>
 
-                        <h4 style={{ margin: '0', color: 'var(--text-secondary)' }}>SMTP Configuration</h4>
+                        <h4 style={{ margin: '0', color: 'var(--text-secondary)' }}>General Settings</h4>
+                        <div className="form-group">
+                            <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem' }}>Site URL / Domain (for Email Links)</label>
+                            <input
+                                className="input-glass"
+                                style={{ textAlign: 'left', fontSize: '1rem' }}
+                                value={formData.domain || ''}
+                                onChange={e => setFormData({ ...formData, domain: e.target.value })}
+                                placeholder="e.g. music.example.com"
+                            />
+                        </div>
+
+                        <h4 style={{ margin: '1rem 0 0', color: 'var(--text-secondary)' }}>SMTP Configuration</h4>
 
                         <div className="form-group">
                             <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem' }}>SMTP Host</label>
