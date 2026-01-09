@@ -50,6 +50,8 @@ def update_settings(
     # Only update PIN if provided (not empty)
     if settings_in.admin_pin:
         settings.admin_pin = settings_in.admin_pin
+        
+    settings.domain = settings_in.domain
     
     session.add(settings)
     session.commit()

@@ -4,6 +4,8 @@ import { Login } from './components/Login'
 import { Upload } from './components/Upload'
 import { GuestManager } from './components/GuestManager'
 import { SettingsModal } from './components/SettingsModal'
+import { MusicPlayer } from './components/MusicPlayer'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { VideoItem } from './types'
 import { jwtDecode } from "jwt-decode";
 import { LogOut, Settings } from 'lucide-react';
@@ -130,9 +132,13 @@ function App() {
                 )}
             </main>
 
-            <footer style={{ marginTop: '5rem', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+            <footer style={{ marginTop: '5rem', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: audios.length > 0 ? '80px' : '0' }}>
                 <p>SECURE MUSIC VAULT // {new Date().getFullYear()}</p>
             </footer>
+
+            <ErrorBoundary>
+                <MusicPlayer audios={audios} />
+            </ErrorBoundary>
         </div>
     )
 }
