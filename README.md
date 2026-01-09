@@ -30,6 +30,29 @@ A secure, modern, and high-performance platform for displaying and managing AI-g
 docker-compose up --build
 ```
 
+### Deploy with Portainer (Production)
+
+You can easily deploy this stack using Portainer by using the pre-built images from GitHub Container Registry.
+
+**Portainer Stack Configuration:**
+```yaml
+version: "3.8"
+services:
+  er-music:
+    image: ghcr.io/eidolf/er-aimusicpage:latest
+    container_name: er-music
+    restart: unless-stopped
+    ports:
+      - 13030:13030
+    volumes:
+      - /path/to/your/data:/app/data
+      - /path/to/your/music:/app/static/uploads
+    environment:
+      - TZ=Europe/Berlin
+```
+Just replace `/path/to/your/...` with your actual server paths.
+
+
 Access the app at `http://localhost:13030`.
 Default PIN: `12345678`
 

@@ -1,0 +1,18 @@
+---
+version: "3.8"
+services:
+  er-music:
+    image: ghcr.io/eidolf/er-aimusicpage:latest
+    container_name: er-music
+    restart: unless-stopped
+    ports:
+      - 13030:13030
+    volumes:
+      # Pfad fuer die Datenbank (persistent)
+      - /pfad/zu/deinen/daten:/app/data
+      # Pfad fuer die Musikdateien/Uploads
+      - /pfad/zu/deiner/musik:/app/static/uploads
+    environment:
+      - TZ=Europe/Berlin
+      # Optional: SMTP Settings koennen hier oder in der UI gesetzt werden
+      # - HELP_E-MAIL_FROM=no-reply@example.com
