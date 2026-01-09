@@ -49,6 +49,9 @@ services:
       - /path/to/your/music:/app/static/uploads
     environment:
       - TZ=Europe/Berlin
+      # SECURITY WARNING: CHANGE THESE IN PRODUCTION!
+      - ACCESS_PIN=12345678
+      - SECRET_KEY=changeme_to_something_secure
 ```
 Just replace `/path/to/your/...` with your actual server paths.
 
