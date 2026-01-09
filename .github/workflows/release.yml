@@ -85,30 +85,37 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set Docker Tags
-        if: steps.check_creds.outputs.has_creds == 'true'
         id: tags
         run: |
           VERSION=${{ steps.version.outputs.VERSION }}
+          TAGS=""
           
-          # Docker Hub
-          DH_IMAGE=${{ secrets.DOCKER_USERNAME }}/er-aimusicpage
-          TAGS="$DH_IMAGE:$VERSION"
-          if [ "${{ inputs.release_type }}" == "stable" ]; then
-            TAGS="$TAGS,$DH_IMAGE:latest"
+          # Docker Hub (Only if credentials exist)
+          if [ "${{ steps.check_creds.outputs.has_creds }}" == "true" ]; then
+            DH_IMAGE=${{ secrets.DOCKER_USERNAME }}/er-aimusicpage
+            TAGS="${DH_IMAGE}:${VERSION}"
+            if [ "${{ inputs.release_type }}" == "stable" ]; then
+              TAGS="${TAGS},${DH_IMAGE}:latest"
+            fi
           fi
           
-          # GHCR (Force lowercase)
+          # GHCR (Always, force lowercase)
           OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           GH_IMAGE=ghcr.io/$OWNER/er-aimusicpage
-          TAGS="$TAGS,$GH_IMAGE:$VERSION"
+          
+          # Append comma if TAGS is not empty
+          if [ -n "$TAGS" ]; then
+            TAGS="${TAGS},"
+          fi
+          
+          TAGS="${TAGS}${GH_IMAGE}:${VERSION}"
           if [ "${{ inputs.release_type }}" == "stable" ]; then
-            TAGS="$TAGS,$GH_IMAGE:latest"
+            TAGS="${TAGS},${GH_IMAGE}:latest"
           fi
           
           echo "docker_tags=$TAGS" >> $GITHUB_OUTPUT
 
       - name: Build and Push Docker
-        if: steps.check_creds.outputs.has_creds == 'true'
         uses: docker/build-push-action@v5
         with:
           context: .
