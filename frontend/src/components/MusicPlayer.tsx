@@ -70,7 +70,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios }) => {
                 audioRef.current.play().catch(e => console.error("Playback failed", e));
             }
         }
-    }, [currentTrackIndex, currentTrack?.url, isPlaying]);
+    }, [currentTrack, isPlaying]);
 
     // If no audios or track, don't render UI
     if (!hasAudio || !currentTrack) return null;

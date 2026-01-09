@@ -61,8 +61,10 @@ jobs:
       # Only runs if secrets are present
       - name: Check Docker Credentials
         id: check_creds
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
         run: |
-          if [[ -n "${{ secrets.DOCKER_USERNAME }}" ]]; then
+          if [[ -n "$DOCKER_USERNAME" ]]; then
             echo "has_creds=true" >> $GITHUB_OUTPUT
           else
             echo "has_creds=false" >> $GITHUB_OUTPUT
