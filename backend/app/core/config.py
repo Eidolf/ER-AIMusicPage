@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     ACCESS_PIN: str = "12345678"
     
     # Database
-    DATABASE_URL: str = "sqlite:///./er_music.db"
+    DATABASE_URL: str = "sqlite:///./data/er_music.db"
 
     # SMTP
     SMTP_TLS: bool = True

@@ -22,6 +22,7 @@ WORKDIR /app
 # Install runtime deps
 RUN pip install poetry && poetry config virtualenvs.create false
 COPY backend/pyproject.toml backend/poetry.lock* /app/
+RUN mkdir -p data && chmod 777 data
 RUN poetry install --no-interaction --no-ansi --no-root --only main
 
 # Copy Frontend Build
