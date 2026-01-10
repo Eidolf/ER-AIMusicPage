@@ -44,6 +44,22 @@ export const Upload: React.FC<UploadProps> = ({ onUploadSuccess }) => {
         }
     };
 
+    const handleReindex = async () => {
+        const token = localStorage.getItem('token');
+        if (!confirm("This will update all linked audio genres to match their parent video. Continue?")) return;
+
+        try {
+            const res = await axios.post('/api/v1/media/reindex-audio', {}, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            alert(res.data.message);
+            onUploadSuccess();
+        } catch (e: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+            console.error(e);
+            alert("Failed to sync genres");
+        }
+    };
+
     const handleUpload = async () => {
         const token = localStorage.getItem('token');
         if (!file || !token) return;
@@ -203,6 +219,14 @@ export const Upload: React.FC<UploadProps> = ({ onUploadSuccess }) => {
                 onClick={handleUpload}
             >
                 {uploading ? 'Uploading...' : 'Start Upload'}
+            </button>
+
+            <button
+                className="neon-btn neon-btn-secondary"
+                style={{ width: '100%', marginTop: '1rem', opacity: 0.8 }}
+                onClick={handleReindex}
+            >
+                Sync Audio Genres (Re-index)
             </button>
         </div>
     );

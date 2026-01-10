@@ -166,6 +166,36 @@ class MediaUpdate(SQLModel):
     genre: Optional[str] = None
     related_to_id: Optional[int] = None
 
+@router.post("/reindex-audio")
+async def reindex_audio(
+    session: Session = Depends(get_session),
+    role: str = Depends(get_current_user_role)
+):
+    """
+    Syncs the genre of audio files with their parent video.
+    Only accessible by admins.
+    """
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    # Find all audios that are linked to a video
+    statement = select(Media).where(Media.media_type == "audio", Media.related_to_id != None)
+    audios = session.exec(statement).all()
+    
+    updated_count = 0
+    for audio in audios:
+        if audio.related_to_id:
+            parent = session.get(Media, audio.related_to_id)
+            if parent and parent.genre and parent.genre != audio.genre:
+                audio.genre = parent.genre
+                session.add(audio)
+                updated_count += 1
+    
+    if updated_count > 0:
+        session.commit()
+        
+    return {"message": f"Updated {updated_count} audio tracks with parent genres.", "updated_count": updated_count}
+
 @router.put("/{media_id}", response_model=MediaRead)
 async def update_media(
     media_id: int,

@@ -1,15 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { VideoItem } from '../types';
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Maximize2, Minimize2, ListMusic, Trash2 } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Maximize2, Minimize2, ListMusic, Trash2, Link as LinkIcon } from 'lucide-react';
 import axios from 'axios';
 
 interface MusicPlayerProps {
     audios: VideoItem[];
+    videos: VideoItem[];
     onDelete?: () => void; // Callback to refresh list
     role: string | null;
 }
 
-export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios, onDelete, role }) => {
+export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios, videos, onDelete, role }) => {
     // Local state to manage audios if we modify them (delete)
     const [audios, setAudios] = useState<VideoItem[]>(initialAudios);
 
@@ -22,6 +23,10 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
     const [isMuted, setIsMuted] = useState(false);
     const [volume, setVolume] = useState(1);
     const [isExpanded, setIsExpanded] = useState(false);
+
+    // Linking Modal State
+    const [linkingTrackId, setLinkingTrackId] = useState<number | null>(null);
+    const [selectedVideoId, setSelectedVideoId] = useState<string>('');
 
     // Seekbar state
     const [currentTime, setCurrentTime] = useState(0);
@@ -115,6 +120,40 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
         } catch (error) {
             console.error("Failed to delete track", error);
             alert("Failed to delete track");
+        }
+    };
+
+    const openLinkModal = (e: React.MouseEvent, track: VideoItem) => {
+        e.stopPropagation();
+        setLinkingTrackId(track.id);
+        setSelectedVideoId(track.related_to_id ? track.related_to_id.toString() : '');
+    };
+
+    const handleSaveLink = async () => {
+        if (linkingTrackId === null) return;
+        const token = localStorage.getItem('token');
+
+        try {
+            await axios.put(`/api/v1/media/${linkingTrackId}`, {
+                related_to_id: selectedVideoId ? parseInt(selectedVideoId) : null
+            }, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            // Also trigger re-index to sync genre?
+            // User requested explicit "reindex button", but logically if linking, we should probably sync?
+            // The prompt "link to video" implies association.
+            // I'll stick to just linking for now, but if the backend endpoint `reindex-audio` exists, the user can use that.
+            // OR I can manually update genre here too if easier.
+            // Let's just update the link. The "Sync Audio Genres" button handles the rest.
+            // Actually, for better UX, maybe we should fetch the video genre and update it locally?
+            // But let's keep it simple as requested: "directly assign a video".
+
+            setLinkingTrackId(null);
+            if (onDelete) onDelete(); // Refresh list
+        } catch (e) {
+            console.error(e);
+            alert("Failed to link video");
         }
     };
 
@@ -262,26 +301,68 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
                                 background: index === currentTrackIndex ? 'rgba(0, 243, 255, 0.1)' : 'transparent',
                                 borderRadius: '4px',
                                 color: index === currentTrackIndex ? 'var(--neon-cyan)' : '#ccc',
-                                justifyContent: 'space-between'
+                                justifySelf: 'stretch'
                             }}
                             className="playlist-item"
                         >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1 }}>
                                 <span style={{ width: '20px', fontSize: '0.8rem', opacity: 0.5 }}>{index + 1}</span>
-                                <span>{track.title || track.filename}</span>
+                                <span style={{ flex: 1 }}>{track.title || track.filename}</span>
+                                {track.related_to_id && (
+                                    <span style={{ fontSize: '0.7rem', color: 'var(--neon-purple)', background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: '4px' }}>
+                                        Linked
+                                    </span>
+                                )}
                             </div>
 
                             {isAdmin && (
-                                <button
-                                    onClick={(e) => handleDeleteTrack(e, track.id)}
-                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff4d4d' }}
-                                    title="Delete Track"
-                                >
-                                    <Trash2 size={16} />
-                                </button>
+                                <div style={{ display: 'flex', gap: '10px' }} onClick={e => e.stopPropagation()}>
+                                    <button
+                                        onClick={(e) => openLinkModal(e, track)}
+                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--neon-purple)' }}
+                                        title="Link to Video"
+                                    >
+                                        <LinkIcon size={16} />
+                                    </button>
+                                    <button
+                                        onClick={(e) => handleDeleteTrack(e, track.id)}
+                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff4d4d' }}
+                                        title="Delete Track"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
                             )}
                         </div>
                     ))}
+                </div>
+            )}
+
+            {/* Linking Modal */}
+            {linkingTrackId !== null && (
+                <div style={{
+                    position: 'fixed', bottom: '20px', left: '50%', transform: 'translateX(-50%)',
+                    background: 'rgba(0,0,0,0.95)', border: '1px solid var(--neon-purple)',
+                    padding: '1.5rem', borderRadius: '8px', zIndex: 1100, width: '300px',
+                    boxShadow: '0 0 20px rgba(188, 19, 254, 0.3)'
+                }}>
+                    <h4 style={{ margin: '0 0 1rem 0', color: 'var(--neon-purple)' }}>Link Audio to Video</h4>
+                    <select
+                        value={selectedVideoId}
+                        onChange={(e) => setSelectedVideoId(e.target.value)}
+                        style={{ width: '100%', padding: '0.5rem', background: '#111', color: '#fff', border: '1px solid #333', borderRadius: '4px', marginBottom: '1rem' }}
+                    >
+                        <option value="">-- No Link --</option>
+                        {videos.map(v => (
+                            <option key={v.id} value={v.id}>
+                                {v.title || v.filename}
+                            </option>
+                        ))}
+                    </select>
+                    <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                        <button onClick={() => setLinkingTrackId(null)} className="neon-btn neon-btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>Cancel</button>
+                        <button onClick={handleSaveLink} className="neon-btn" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', background: 'var(--neon-purple)', color: '#fff' }}>Save</button>
+                    </div>
                 </div>
             )}
 

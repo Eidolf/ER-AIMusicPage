@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { VideoItem } from '../types';
-import { ChevronDown, ChevronUp, Download, Music, Search, Edit2, Trash2, Link as LinkIcon, X, Save } from 'lucide-react';
+import { ChevronDown, ChevronUp, Download, Music, Search, Edit2, Trash2, Link as LinkIcon, X, Save, Layers, FilterX } from 'lucide-react';
 
 interface VideoGridProps {
     videos: VideoItem[];
@@ -18,9 +18,14 @@ const VideoCard: React.FC<{
     isAdmin: boolean;
     onEdit: (video: VideoItem) => void;
     onDelete: (id: number) => void;
-}> = ({ video, audios, isPlaying, onPlay, isAdmin, onEdit, onDelete }) => {
+    // New props for Version Family
+    parentVideo?: VideoItem;
+    childVideos?: VideoItem[];
+    onFilterFamily: (id: number) => void;
+}> = ({ video, audios, isPlaying, onPlay, isAdmin, onEdit, onDelete, parentVideo, childVideos, onFilterFamily }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const [isExpanded, setIsExpanded] = useState(false);
+    const [isVersionsExpanded, setIsVersionsExpanded] = useState(false);
     const linkedAudio = audios.find(a => a.related_to_id === video.id);
 
     // Stop video if not playing
@@ -38,7 +43,8 @@ const VideoCard: React.FC<{
                     transition: 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)',
                     height: 'auto',
                     display: 'flex',
-                    flexDirection: 'column'
+                    flexDirection: 'column',
+                    border: (parentVideo || (childVideos && childVideos.length > 0)) ? '1px solid rgba(0, 243, 255, 0.3)' : undefined
                 }}
             >
                 <div style={{
@@ -110,13 +116,67 @@ const VideoCard: React.FC<{
                             <span style={{ fontSize: '0.8rem', color: '#666', fontStyle: 'italic' }}>Unknown Genre</span>
                         )}
 
-                        {/* Show Linked ID if admin */}
-                        {isAdmin && video.related_to_id && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.7rem', color: 'var(--neon-purple)', marginTop: '0.5rem' }}>
-                                <LinkIcon size={12} />
-                                <span>Linked to ID: {video.related_to_id}</span>
-                            </div>
-                        )}
+                        {/* Version Family Links */}
+                        <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                            {/* Case 1: This is a Child */}
+                            {parentVideo && (
+                                <div
+                                    onClick={() => onFilterFamily(parentVideo.id)}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.8rem',
+                                        color: 'var(--neon-purple)', cursor: 'pointer',
+                                        background: 'rgba(255,255,255,0.05)', padding: '4px 8px', borderRadius: '4px'
+                                    }}
+                                    title="Click to see all versions"
+                                >
+                                    <LinkIcon size={12} />
+                                    <span>Version of: <strong>{parentVideo.title || parentVideo.filename}</strong></span>
+                                </div>
+                            )}
+
+                            {/* Case 2: This is a Parent */}
+                            {childVideos && childVideos.length > 0 && (
+                                <div>
+                                    <div
+                                        onClick={() => setIsVersionsExpanded(!isVersionsExpanded)}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.8rem',
+                                            color: 'var(--neon-cyan)', cursor: 'pointer',
+                                            background: 'rgba(0, 243, 255, 0.1)', padding: '4px 8px', borderRadius: '4px',
+                                            justifyContent: 'space-between'
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                            <Layers size={12} />
+                                            <span>{childVideos.length} Alternate Version{childVideos.length !== 1 ? 's' : ''}</span>
+                                        </div>
+                                        {isVersionsExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                    </div>
+
+                                    {isVersionsExpanded && (
+                                        <div style={{
+                                            padding: '0.5rem',
+                                            background: 'rgba(0,0,0,0.3)',
+                                            marginTop: '2px',
+                                            borderRadius: '0 0 4px 4px',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '4px'
+                                        }}>
+                                            {childVideos.map(child => (
+                                                <div
+                                                    key={child.id}
+                                                    onClick={() => onFilterFamily(video.id)}
+                                                    style={{ fontSize: '0.75rem', color: '#ccc', cursor: 'pointer', padding: '2px 4px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+                                                >
+                                                    ↳ {child.title || child.filename}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     <button
@@ -171,11 +231,26 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ videos, audios, role, onRe
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedGenre, setSelectedGenre] = useState<string>('All');
     const [editingVideo, setEditingVideo] = useState<VideoItem | null>(null);
+    const [familyFilterId, setFamilyFilterId] = useState<number | null>(null); // To filter by parent ID
 
     // Edit Form State
     const [editForm, setEditForm] = useState({ title: '', genre: '', related_to_id: '' });
 
     const isAdmin = role === 'admin';
+
+    // Pre-calculate Relationships (Parent -> Children) using Memo
+    const relationships = useMemo(() => {
+        const map = new Map<number, VideoItem[]>();
+        videos.forEach(v => {
+            if (v.related_to_id) {
+                if (!map.has(v.related_to_id)) {
+                    map.set(v.related_to_id, []);
+                }
+                map.get(v.related_to_id)?.push(v);
+            }
+        });
+        return map;
+    }, [videos]);
 
     // Unique Genres
     const genres = useMemo(() => {
@@ -186,9 +261,18 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ videos, audios, role, onRe
     // Filter Logic
     const filteredVideos = useMemo(() => {
         let result = videos;
+
+        // 1. Family Filter (Highest Priority)
+        if (familyFilterId) {
+            return result.filter(v => v.id === familyFilterId || v.related_to_id === familyFilterId);
+        }
+
+        // 2. Genre Filter
         if (selectedGenre !== 'All') {
             result = result.filter(v => v.genre === selectedGenre);
         }
+
+        // 3. Search Filter
         if (searchQuery) {
             const lowerQuery = searchQuery.toLowerCase();
             result = result.filter(v =>
@@ -197,7 +281,7 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ videos, audios, role, onRe
             );
         }
         return result;
-    }, [videos, selectedGenre, searchQuery]);
+    }, [videos, selectedGenre, searchQuery, familyFilterId]);
 
     // Handlers
     const handleEdit = (video: VideoItem) => {
@@ -276,7 +360,23 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ videos, audios, role, onRe
                     />
                 </div>
 
-                {genres.length > 1 && (
+                {/* Active Filter Indicator */}
+                {familyFilterId && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', animation: 'fadeIn 0.5s' }}>
+                        <span style={{ color: 'var(--neon-purple)', fontWeight: 'bold' }}>
+                            Active Filter: version Family #{familyFilterId}
+                        </span>
+                        <button
+                            className="neon-btn neon-btn-secondary"
+                            onClick={() => setFamilyFilterId(null)}
+                            style={{ padding: '0.4rem 1rem', display: 'flex', gap: '5px', fontSize: '0.8rem' }}
+                        >
+                            <FilterX size={14} /> Clear Filter
+                        </button>
+                    </div>
+                )}
+
+                {genres.length > 1 && !familyFilterId && (
                     <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', flexWrap: 'wrap' }}>
                         {genres.map(genre => (
                             <button
@@ -304,18 +404,26 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ videos, audios, role, onRe
                 gap: '2rem',
                 padding: '1rem'
             }}>
-                {filteredVideos.map((video) => (
-                    <VideoCard
-                        key={video.id}
-                        video={video}
-                        audios={audios}
-                        isPlaying={playingId === video.id}
-                        onPlay={setPlayingId}
-                        isAdmin={isAdmin}
-                        onEdit={handleEdit}
-                        onDelete={handleDelete}
-                    />
-                ))}
+                {filteredVideos.map((video) => {
+                    const childVideos = relationships.get(video.id);
+                    const parentVideo = video.related_to_id ? videos.find(v => v.id === video.related_to_id) : undefined;
+
+                    return (
+                        <VideoCard
+                            key={video.id}
+                            video={video}
+                            audios={audios}
+                            isPlaying={playingId === video.id}
+                            onPlay={setPlayingId}
+                            isAdmin={isAdmin}
+                            onEdit={handleEdit}
+                            onDelete={handleDelete}
+                            parentVideo={parentVideo}
+                            childVideos={childVideos}
+                            onFilterFamily={setFamilyFilterId}
+                        />
+                    );
+                })}
 
                 {filteredVideos.length === 0 && (
                     <div style={{ gridColumn: '1/-1', textAlign: 'center', color: 'var(--text-secondary)', padding: '2rem' }}>
