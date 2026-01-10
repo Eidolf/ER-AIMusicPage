@@ -47,7 +47,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
             if (audioRef.current) audioRef.current.pause();
             setIsPlaying(false);
         }
-    }, [shouldPause]);
+    }, [shouldPause, isPlaying]);
 
     const togglePlay = () => {
         if (audioRef.current) {
