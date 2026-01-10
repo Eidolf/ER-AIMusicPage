@@ -82,10 +82,11 @@ export const Upload: React.FC<UploadProps> = ({ onUploadSuccess }) => {
             if (fileInput.current) fileInput.current.value = '';
             onUploadSuccess();
             alert('Upload successful!');
-        } catch (error) {
+        } catch (error: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
             console.error(error);
             setUploading(false);
-            alert('Upload failed');
+            const msg = error.response?.data?.detail || 'Upload failed';
+            alert(msg);
         }
     };
 
@@ -136,11 +137,11 @@ export const Upload: React.FC<UploadProps> = ({ onUploadSuccess }) => {
                         value={relatedToId}
                         onChange={(e) => setRelatedToId(e.target.value)}
                         className="input-glass"
-                        style={{ textAlign: 'left', appearance: 'none' }}
+                        style={{ textAlign: 'left', appearance: 'none', color: '#fff', backgroundColor: 'rgba(0,0,0,0.5)' }}
                     >
-                        <option value="">-- Independent Audio --</option>
+                        <option value="" style={{ color: '#000' }}>-- Independent Audio --</option>
                         {videos.map(v => (
-                            <option key={v.id} value={v.id}>{v.filename}</option>
+                            <option key={v.id} value={v.id} style={{ color: '#000' }}>{v.filename}</option>
                         ))}
                     </select>
                 </div>

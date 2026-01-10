@@ -1,22 +1,38 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { VideoItem } from '../types';
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Maximize2, Minimize2, ListMusic } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Maximize2, Minimize2, ListMusic, Trash2 } from 'lucide-react';
+import axios from 'axios';
 
 interface MusicPlayerProps {
     audios: VideoItem[];
+    onDelete?: () => void; // Callback to refresh list
+    role: string | null;
 }
 
-export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios }) => {
+export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios, onDelete, role }) => {
+    // Local state to manage audios if we modify them (delete)
+    const [audios, setAudios] = useState<VideoItem[]>(initialAudios);
+
+    useEffect(() => {
+        setAudios(initialAudios);
+    }, [initialAudios]);
+
     const [currentTrackIndex, setCurrentTrackIndex] = useState<number>(0);
     const [isPlaying, setIsPlaying] = useState(false);
     const [isMuted, setIsMuted] = useState(false);
     const [volume, setVolume] = useState(1);
     const [isExpanded, setIsExpanded] = useState(false);
 
-    const audioRef = useRef<HTMLAudioElement>(null);
+    // Seekbar state
+    const [currentTime, setCurrentTime] = useState(0);
+    const [duration, setDuration] = useState(0);
 
+    const audioRef = useRef<HTMLAudioElement>(null);
     const hasAudio = audios && audios.length > 0;
     const currentTrack = hasAudio ? audios[currentTrackIndex] : null;
+
+    // Check admin role
+    const isAdmin = role === 'admin';
 
     const togglePlay = () => {
         if (audioRef.current) {
@@ -62,6 +78,46 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios }) => {
         }
     };
 
+    // Seekbar handlers
+    const handleTimeUpdate = () => {
+        if (audioRef.current) {
+            setCurrentTime(audioRef.current.currentTime);
+            setDuration(audioRef.current.duration || 0);
+        }
+    };
+
+    const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const time = parseFloat(e.target.value);
+        setCurrentTime(time);
+        if (audioRef.current) {
+            audioRef.current.currentTime = time;
+        }
+    };
+
+    const formatTime = (time: number) => {
+        if (isNaN(time)) return "0:00";
+        const minutes = Math.floor(time / 60);
+        const seconds = Math.floor(time % 60);
+        return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+    };
+
+    const handleDeleteTrack = async (e: React.MouseEvent, trackId: number) => {
+        e.stopPropagation(); // Prevent playing when clicking delete
+        if (!window.confirm("Delete this track?")) return;
+
+        const token = localStorage.getItem('token');
+        try {
+            await axios.delete(`/api/v1/media/${trackId}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            // Invoke callback to refresh parent state
+            if (onDelete) onDelete();
+        } catch (error) {
+            console.error("Failed to delete track", error);
+            alert("Failed to delete track");
+        }
+    };
+
     // Auto-play when track changes if already playing
     useEffect(() => {
         if (audioRef.current && currentTrack) {
@@ -72,7 +128,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios }) => {
         }
     }, [currentTrack, isPlaying]);
 
-    // If no audios or track, don't render UI
+    // If no audios, don't render UI
     if (!hasAudio || !currentTrack) return null;
 
     return (
@@ -90,6 +146,20 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios }) => {
             flexDirection: 'column',
             boxShadow: '0 -5px 20px rgba(0,0,0,0.5)'
         }}>
+            {/* Progress Bar (Full Width Top) */}
+            <div style={{ width: '100%', display: 'flex', alignItems: 'center', marginBottom: '0.5rem', gap: '10px', fontSize: '0.8rem', color: '#aaa' }}>
+                <span>{formatTime(currentTime)}</span>
+                <input
+                    type="range"
+                    min="0"
+                    max={duration || 0}
+                    value={currentTime}
+                    onChange={handleSeek}
+                    style={{ flex: 1, accentColor: 'var(--neon-purple)', height: '4px' }}
+                />
+                <span>{formatTime(duration)}</span>
+            </div>
+
             {/* Main Bar */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', maxWidth: '1200px', width: '100%', margin: '0 auto' }}>
 
@@ -166,7 +236,8 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios }) => {
             <audio
                 ref={audioRef}
                 onEnded={playNext}
-                onTimeUpdate={() => { /* Could add progress bar later */ }}
+                onTimeUpdate={handleTimeUpdate}
+                onLoadedMetadata={handleTimeUpdate}
             />
 
             {/* Expanded Playlist View */}
@@ -190,12 +261,25 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios }) => {
                                 cursor: 'pointer',
                                 background: index === currentTrackIndex ? 'rgba(0, 243, 255, 0.1)' : 'transparent',
                                 borderRadius: '4px',
-                                color: index === currentTrackIndex ? 'var(--neon-cyan)' : '#ccc'
+                                color: index === currentTrackIndex ? 'var(--neon-cyan)' : '#ccc',
+                                justifyContent: 'space-between'
                             }}
                             className="playlist-item"
                         >
-                            <span style={{ width: '20px', fontSize: '0.8rem', opacity: 0.5 }}>{index + 1}</span>
-                            <span>{track.title || track.filename}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                <span style={{ width: '20px', fontSize: '0.8rem', opacity: 0.5 }}>{index + 1}</span>
+                                <span>{track.title || track.filename}</span>
+                            </div>
+
+                            {isAdmin && (
+                                <button
+                                    onClick={(e) => handleDeleteTrack(e, track.id)}
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff4d4d' }}
+                                    title="Delete Track"
+                                >
+                                    <Trash2 size={16} />
+                                </button>
+                            )}
                         </div>
                     ))}
                 </div>

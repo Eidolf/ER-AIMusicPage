@@ -137,7 +137,8 @@ function App() {
             </footer>
 
             <ErrorBoundary>
-                <MusicPlayer audios={audios} />
+                <MusicPlayer audios={audios} onDelete={fetchMedia} role={role} />
+                <div style={{ paddingBottom: '100px' }}></div>
             </ErrorBoundary>
         </div>
     )

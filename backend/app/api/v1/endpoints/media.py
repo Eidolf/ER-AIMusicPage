@@ -85,6 +85,11 @@ async def upload_file(
     # Generate unique filename to avoid overwrite? For now simple.
     # sanitize filename
     safe_filename = file.filename.replace(" ", "_").replace("/", "")
+    # Check for duplicates
+    existing = session.exec(select(Media).where(Media.filename == safe_filename)).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="File with this name already exists")
+
     file_location = os.path.join(UPLOAD_DIR, safe_filename)
     
     with open(file_location, "wb+") as buffer:
@@ -93,6 +98,13 @@ async def upload_file(
     
     # URL relative to static mount
     url = f"/limit_static/uploads/{safe_filename}"
+
+    # Genre inheritance logic
+    final_genre = genre
+    if related_to_id:
+        parent_video = session.get(Media, related_to_id)
+        if parent_video and parent_video.genre:
+             final_genre = parent_video.genre
     
     db_media = Media(
         filename=safe_filename,
@@ -100,7 +112,7 @@ async def upload_file(
         media_type=media_type,
         related_to_id=related_to_id,
         title=title,
-        genre=genre
+        genre=final_genre
     )
     
     session.add(db_media)
