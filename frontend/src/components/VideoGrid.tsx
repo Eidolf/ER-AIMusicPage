@@ -7,6 +7,8 @@ interface VideoGridProps {
     audios: VideoItem[];
     role: string | null;
     onRefresh: () => void;
+    stopAll?: boolean;
+    onPlay?: () => void;
 }
 
 // Internal VideoCard Component to handle refs and playback control
@@ -226,8 +228,21 @@ const VideoCard: React.FC<{
     );
 };
 
-export const VideoGrid: React.FC<VideoGridProps> = ({ videos, audios, role, onRefresh }) => {
+export const VideoGrid: React.FC<VideoGridProps> = ({ videos, audios, role, onRefresh, stopAll, onPlay }) => {
     const [playingId, setPlayingId] = useState<number | null>(null);
+
+    // Effect to stop all videos if external signal received
+    useEffect(() => {
+        if (stopAll) {
+            setPlayingId(null);
+        }
+    }, [stopAll]);
+
+    // Internal handler that notifies parent
+    const handlePlay = (id: number) => {
+        setPlayingId(id);
+        if (onPlay) onPlay();
+    };
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedGenre, setSelectedGenre] = useState<string>('All');
     const [editingVideo, setEditingVideo] = useState<VideoItem | null>(null);
@@ -414,7 +429,7 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ videos, audios, role, onRe
                             video={video}
                             audios={audios}
                             isPlaying={playingId === video.id}
-                            onPlay={setPlayingId}
+                            onPlay={handlePlay}
                             isAdmin={isAdmin}
                             onEdit={handleEdit}
                             onDelete={handleDelete}

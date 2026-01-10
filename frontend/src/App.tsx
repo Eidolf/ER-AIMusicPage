@@ -23,6 +23,7 @@ function App() {
     const [videos, setVideos] = useState<VideoItem[]>([]);
     const [audios, setAudios] = useState<VideoItem[]>([]);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [activeMediaType, setActiveMediaType] = useState<'audio' | 'video' | 'none'>('none');
 
     useEffect(() => {
         if (token) {
@@ -111,7 +112,14 @@ function App() {
             <main>
                 <section style={{ marginBottom: '4rem' }}>
                     <h2 style={{ color: 'var(--neon-cyan)', marginBottom: '1.5rem' }}>LATEST DROPS</h2>
-                    <VideoGrid videos={videos} audios={audios} role={role} onRefresh={fetchMedia} />
+                    <VideoGrid
+                        videos={videos}
+                        audios={audios}
+                        role={role}
+                        onRefresh={fetchMedia}
+                        stopAll={activeMediaType === 'audio'}
+                        onPlay={() => setActiveMediaType('video')}
+                    />
                 </section>
 
                 {role === 'admin' && (
@@ -137,7 +145,14 @@ function App() {
             </footer>
 
             <ErrorBoundary>
-                <MusicPlayer audios={audios} videos={videos} onDelete={fetchMedia} role={role} />
+                <MusicPlayer
+                    audios={audios}
+                    videos={videos}
+                    onDelete={fetchMedia}
+                    role={role}
+                    shouldPause={activeMediaType === 'video'}
+                    onPlay={() => setActiveMediaType('audio')}
+                />
                 <div style={{ paddingBottom: '100px' }}></div>
             </ErrorBoundary>
         </div>

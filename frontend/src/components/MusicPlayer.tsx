@@ -8,9 +8,11 @@ interface MusicPlayerProps {
     videos: VideoItem[];
     onDelete?: () => void; // Callback to refresh list
     role: string | null;
+    shouldPause?: boolean;
+    onPlay?: () => void;
 }
 
-export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios, videos, onDelete, role }) => {
+export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios, videos, onDelete, role, shouldPause, onPlay }) => {
     // Local state to manage audios if we modify them (delete)
     const [audios, setAudios] = useState<VideoItem[]>(initialAudios);
 
@@ -39,12 +41,21 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
     // Check admin role
     const isAdmin = role === 'admin';
 
+    // Pause audio if external signal (shouldPause) is on
+    useEffect(() => {
+        if (shouldPause && isPlaying) {
+            if (audioRef.current) audioRef.current.pause();
+            setIsPlaying(false);
+        }
+    }, [shouldPause]);
+
     const togglePlay = () => {
         if (audioRef.current) {
             if (isPlaying) {
                 audioRef.current.pause();
             } else {
                 audioRef.current.play();
+                if (onPlay) onPlay(); // Notify parent
             }
             setIsPlaying(!isPlaying);
         }
@@ -291,7 +302,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
                     {audios.map((track, index) => (
                         <div
                             key={track.id}
-                            onClick={() => { setCurrentTrackIndex(index); setIsPlaying(true); }}
+                            onClick={() => { setCurrentTrackIndex(index); setIsPlaying(true); if (onPlay) onPlay(); }}
                             style={{
                                 padding: '0.5rem',
                                 display: 'flex',
