@@ -8,7 +8,7 @@ import { MusicPlayer } from './components/MusicPlayer'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { VideoItem } from './types'
 import { jwtDecode } from "jwt-decode";
-import { LogOut, Settings } from 'lucide-react';
+import { LogOut, Settings, Star } from 'lucide-react';
 import './styles/index.css'
 
 interface TokenPayload {
@@ -25,17 +25,70 @@ function App() {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [activeMediaType, setActiveMediaType] = useState<'audio' | 'video' | 'none'>('none');
 
+    // Favorites State
+    const [favoriteIds, setFavoriteIds] = useState<number[]>([]);
+    const [favoriteStats, setFavoriteStats] = useState<Record<number, number>>({});
+    const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+
     useEffect(() => {
         if (token) {
             try {
                 const decoded = jwtDecode<TokenPayload>(token);
                 setRole(decoded.role);
                 fetchMedia();
+                fetchFavorites();
+                if (decoded.role === 'admin') {
+                    fetchFavoriteStats();
+                }
             } catch (e) {
                 handleLogout();
             }
         }
     }, [token]);
+
+    const fetchFavorites = async () => {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        try {
+            const res = await fetch('/api/v1/favorites', { headers: { 'Authorization': `Bearer ${token}` } });
+            if (res.ok) setFavoriteIds(await res.json());
+        } catch (e) { console.error("Fetch favorites failed", e); }
+    };
+
+    const fetchFavoriteStats = async () => {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        try {
+            const res = await fetch('/api/v1/favorites/stats', { headers: { 'Authorization': `Bearer ${token}` } });
+            if (res.ok) setFavoriteStats(await res.json());
+        } catch (e) { console.error("Fetch favorite stats failed", e); }
+    };
+
+    const toggleFavorite = async (mediaId: number) => {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+
+        // Optimistic UI update
+        const isFav = favoriteIds.includes(mediaId);
+        setFavoriteIds(prev => isFav ? prev.filter(id => id !== mediaId) : [...prev, mediaId]);
+
+        try {
+            const res = await fetch('/api/v1/favorites/toggle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ media_id: mediaId })
+            });
+
+            if (res.ok) {
+                if (role === 'admin') fetchFavoriteStats();
+            } else {
+                fetchFavorites(); // Revert on fail
+            }
+        } catch (e) {
+            console.error("Toggle favorite failed", e);
+            fetchFavorites();
+        }
+    };
 
     const fetchMedia = async () => {
         const token = localStorage.getItem('token');
@@ -68,6 +121,9 @@ function App() {
         return <Login onLogin={handleLogin} />
     }
 
+    const filteredVideos = showFavoritesOnly ? videos.filter(v => favoriteIds.includes(v.id)) : videos;
+    const filteredAudios = showFavoritesOnly ? audios.filter(a => favoriteIds.includes(a.id)) : audios;
+
     return (
         <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
             <header style={{
@@ -93,6 +149,15 @@ function App() {
                     </div>
                 </div>
                 <div style={{ display: 'flex', gap: '1rem' }}>
+                    <button
+                        onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+                        className={`neon-btn ${!showFavoritesOnly ? 'neon-btn-secondary' : ''}`}
+                        style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '0.5rem 1rem' }}
+                        title="Toggle Favorites Filter"
+                    >
+                        <Star size={18} fill={showFavoritesOnly ? '#FFD700' : 'none'} color={showFavoritesOnly ? '#FFD700' : 'currentColor'} />
+                        <span style={{ fontSize: '0.8rem' }}>FAVORITES</span>
+                    </button>
                     {role === 'admin' && (
                         <button
                             onClick={() => setIsSettingsOpen(true)}
@@ -113,12 +178,15 @@ function App() {
                 <section style={{ marginBottom: '4rem' }}>
                     <h2 style={{ color: 'var(--neon-cyan)', marginBottom: '1.5rem' }}>LATEST DROPS</h2>
                     <VideoGrid
-                        videos={videos}
-                        audios={audios}
+                        videos={filteredVideos}
+                        audios={filteredAudios}
                         role={role}
                         onRefresh={fetchMedia}
                         stopAll={activeMediaType === 'audio'}
                         onPlay={() => setActiveMediaType('video')}
+                        favoriteIds={favoriteIds}
+                        favoriteStats={favoriteStats}
+                        onToggleFavorite={toggleFavorite}
                     />
                 </section>
 
@@ -146,12 +214,14 @@ function App() {
 
             <ErrorBoundary>
                 <MusicPlayer
-                    audios={audios}
-                    videos={videos}
+                    audios={filteredAudios}
+                    videos={filteredVideos}
                     onDelete={fetchMedia}
                     role={role}
                     shouldPause={activeMediaType === 'video'}
                     onPlay={() => setActiveMediaType('audio')}
+                    favoriteIds={favoriteIds}
+                    onToggleFavorite={toggleFavorite}
                 />
                 <div style={{ paddingBottom: '100px' }}></div>
             </ErrorBoundary>

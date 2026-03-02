@@ -3,6 +3,7 @@ from app.core.config import settings
 # Import models so SQLModel knows about them for create_all
 from app.models.guest import Guest
 from app.models.media import Media
+from app.models.favorite import Favorite
 
 engine = create_engine(
     settings.DATABASE_URL, connect_args={"check_same_thread": False}

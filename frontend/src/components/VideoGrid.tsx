@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { VideoItem } from '../types';
-import { ChevronDown, ChevronUp, Download, Music, Search, Edit2, Trash2, Link as LinkIcon, X, Save, Layers, FilterX } from 'lucide-react';
+import { ChevronDown, ChevronUp, Download, Music, Search, Edit2, Trash2, Link as LinkIcon, X, Save, Layers, FilterX, Star } from 'lucide-react';
 
 interface VideoGridProps {
     videos: VideoItem[];
@@ -9,6 +9,9 @@ interface VideoGridProps {
     onRefresh: () => void;
     stopAll?: boolean;
     onPlay?: () => void;
+    favoriteIds?: number[];
+    favoriteStats?: Record<number, number>;
+    onToggleFavorite?: (mediaId: number) => void;
 }
 
 // Internal VideoCard Component to handle refs and playback control
@@ -24,7 +27,10 @@ const VideoCard: React.FC<{
     parentVideo?: VideoItem;
     childVideos?: VideoItem[];
     onFilterFamily: (id: number) => void;
-}> = ({ video, audios, isPlaying, onPlay, isAdmin, onEdit, onDelete, parentVideo, childVideos, onFilterFamily }) => {
+    isFavorite?: boolean;
+    favoriteCount?: number;
+    onToggleFavorite?: (id: number) => void;
+}> = ({ video, audios, isPlaying, onPlay, isAdmin, onEdit, onDelete, parentVideo, childVideos, onFilterFamily, isFavorite, favoriteCount, onToggleFavorite }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const [isExpanded, setIsExpanded] = useState(false);
     const [isVersionsExpanded, setIsVersionsExpanded] = useState(false);
@@ -80,6 +86,50 @@ const VideoCard: React.FC<{
                             </button>
                             <button onClick={() => onDelete(video.id)} className="neon-btn neon-btn-secondary" style={{ padding: '5px', borderRadius: '50%', width: '30px', height: '30px', display: 'flex', justifyContent: 'center', alignItems: 'center' }} title="Delete">
                                 <Trash2 size={14} />
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Favorite Star Overlay */}
+                    {onToggleFavorite && (
+                        <div style={{
+                            position: 'absolute',
+                            top: '10px',
+                            right: '10px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            zIndex: 10
+                        }}>
+                            {isAdmin && favoriteCount !== undefined && favoriteCount > 0 && (
+                                <span style={{ color: '#FFD700', fontSize: '0.8rem', fontWeight: 'bold', textShadow: '0 0 5px rgba(0,0,0,0.8)' }}>
+                                    {favoriteCount}
+                                </span>
+                            )}
+                            <button
+                                onClick={() => onToggleFavorite(video.id)}
+                                style={{
+                                    background: 'rgba(0,0,0,0.5)',
+                                    border: 'none',
+                                    borderRadius: '50%',
+                                    width: '36px',
+                                    height: '36px',
+                                    display: 'flex',
+                                    justifyContent: 'center',
+                                    alignItems: 'center',
+                                    cursor: 'pointer',
+                                    padding: 0
+                                }}
+                            >
+                                <Star
+                                    size={20}
+                                    fill={isFavorite ? '#FFD700' : 'none'}
+                                    color={isFavorite ? '#FFD700' : '#fff'}
+                                    style={{
+                                        filter: isFavorite ? 'drop-shadow(0 0 5px #FFD700)' : 'none',
+                                        transition: 'all 0.2s'
+                                    }}
+                                />
                             </button>
                         </div>
                     )}
@@ -228,7 +278,7 @@ const VideoCard: React.FC<{
     );
 };
 
-export const VideoGrid: React.FC<VideoGridProps> = ({ videos, audios, role, onRefresh, stopAll, onPlay }) => {
+export const VideoGrid: React.FC<VideoGridProps> = ({ videos, audios, role, onRefresh, stopAll, onPlay, favoriteIds = [], favoriteStats = {}, onToggleFavorite }) => {
     const [playingId, setPlayingId] = useState<number | null>(null);
 
     // Effect to stop all videos if external signal received
@@ -436,6 +486,9 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ videos, audios, role, onRe
                             parentVideo={parentVideo}
                             childVideos={childVideos}
                             onFilterFamily={setFamilyFilterId}
+                            isFavorite={favoriteIds.includes(video.id)}
+                            favoriteCount={favoriteStats[video.id] || 0}
+                            onToggleFavorite={onToggleFavorite}
                         />
                     );
                 })}

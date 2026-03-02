@@ -7,7 +7,7 @@ import os
 from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.api.v1.api import api_router
-from app.api.v1.endpoints import auth, media, guests
+from app.api.v1.endpoints import auth, media, guests, favorites
 from app.api.v1.endpoints import settings as settings_endpoint
 from app.core.db import init_db
 
@@ -38,6 +38,7 @@ if settings.BACKEND_CORS_ORIGINS:
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(media.router, prefix="/api/v1/media", tags=["media"])
 app.include_router(guests.router, prefix="/api/v1/guests", tags=["guests"])
+app.include_router(favorites.router, prefix="/api/v1/favorites", tags=["favorites"])
 app.include_router(settings_endpoint.router, prefix="/api/v1/settings", tags=["settings"])
 
 @app.get("/health")

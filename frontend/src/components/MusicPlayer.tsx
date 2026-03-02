@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { VideoItem } from '../types';
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Maximize2, Minimize2, ListMusic, Trash2, Link as LinkIcon } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Maximize2, Minimize2, ListMusic, Trash2, Link as LinkIcon, Star, Repeat, Repeat1, Shuffle } from 'lucide-react';
 import axios from 'axios';
 
 interface MusicPlayerProps {
@@ -10,9 +10,11 @@ interface MusicPlayerProps {
     role: string | null;
     shouldPause?: boolean;
     onPlay?: () => void;
+    favoriteIds?: number[];
+    onToggleFavorite?: (mediaId: number) => void;
 }
 
-export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios, videos, onDelete, role, shouldPause, onPlay }) => {
+export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios, videos, onDelete, role, shouldPause, onPlay, favoriteIds = [], onToggleFavorite }) => {
     // Local state to manage audios if we modify them (delete)
     const [audios, setAudios] = useState<VideoItem[]>(initialAudios);
 
@@ -25,6 +27,11 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
     const [isMuted, setIsMuted] = useState(false);
     const [volume, setVolume] = useState(1);
     const [isExpanded, setIsExpanded] = useState(false);
+
+    // Playback Modes
+    const [repeatMode, setRepeatMode] = useState<'off' | 'all' | 'one'>('off');
+    const [isMix, setIsMix] = useState(false);
+    const [mixHistory, setMixHistory] = useState<number[]>([]); // To allow Prev track while in Mix mode
 
     // Linking Modal State
     const [linkingTrackId, setLinkingTrackId] = useState<number | null>(null);
@@ -63,16 +70,57 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
 
     const playNext = () => {
         if (!hasAudio) return;
-        let nextIndex = currentTrackIndex + 1;
-        if (nextIndex >= audios.length) nextIndex = 0;
+
+        if (repeatMode === 'one' && audioRef.current?.currentTime === audioRef.current?.duration) {
+            // Let the audio inherently loop or we just reset it
+            if (audioRef.current) {
+                audioRef.current.currentTime = 0;
+                audioRef.current.play();
+                return;
+            }
+        }
+
+        let nextIndex;
+        if (isMix && audios.length > 1) {
+            // Randomly select next track that is not the current one
+            do {
+                nextIndex = Math.floor(Math.random() * audios.length);
+            } while (nextIndex === currentTrackIndex);
+            setMixHistory(prev => [...prev.slice(-20), currentTrackIndex]); // Keep last 20 history
+        } else {
+            nextIndex = currentTrackIndex + 1;
+            if (nextIndex >= audios.length) {
+                if (repeatMode === 'off' && audioRef.current?.currentTime === audioRef.current?.duration) {
+                    setIsPlaying(false);
+                    return; // Stop at end of list if not repeating
+                }
+                nextIndex = 0;
+            }
+        }
+
         setCurrentTrackIndex(nextIndex);
         setIsPlaying(true);
     };
 
     const playPrev = () => {
         if (!hasAudio) return;
-        let prevIndex = currentTrackIndex - 1;
-        if (prevIndex < 0) prevIndex = audios.length - 1;
+
+        if (audioRef.current && audioRef.current.currentTime > 3) {
+            audioRef.current.currentTime = 0;
+            return;
+        }
+
+        let prevIndex;
+        if (isMix && mixHistory.length > 0) {
+            // Go back in history
+            const historyObj = [...mixHistory];
+            prevIndex = historyObj.pop() as number;
+            setMixHistory(historyObj);
+        } else {
+            prevIndex = currentTrackIndex - 1;
+            if (prevIndex < 0) prevIndex = audios.length - 1;
+        }
+
         setCurrentTrackIndex(prevIndex);
         setIsPlaying(true);
     };
@@ -178,6 +226,19 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
         }
     }, [currentTrack, isPlaying]);
 
+    // Handle end of track manually to override default react behavior sometimes
+    useEffect(() => {
+        if (audioRef.current) {
+            audioRef.current.loop = repeatMode === 'one';
+        }
+    }, [repeatMode]);
+
+    const toggleRepeatMode = () => {
+        if (repeatMode === 'off') setRepeatMode('all');
+        else if (repeatMode === 'all') setRepeatMode('one');
+        else setRepeatMode('off');
+    };
+
     // If no audios, don't render UI
     if (!hasAudio || !currentTrack) return null;
 
@@ -244,6 +305,15 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
 
                 {/* Controls */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', flex: 1, justifyContent: 'center' }}>
+                    <button
+                        onClick={() => setIsMix(!isMix)}
+                        className="control-btn"
+                        title="Mix"
+                        style={{ color: isMix ? 'var(--neon-purple)' : '#fff', opacity: isMix ? 1 : 0.8 }}
+                    >
+                        <Shuffle size={18} />
+                    </button>
+
                     <button onClick={playPrev} className="control-btn" title="Previous">
                         <SkipBack size={20} />
                     </button>
@@ -254,6 +324,15 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
 
                     <button onClick={playNext} className="control-btn" title="Next">
                         <SkipForward size={20} />
+                    </button>
+
+                    <button
+                        onClick={toggleRepeatMode}
+                        className="control-btn"
+                        title={`Repeat: ${repeatMode}`}
+                        style={{ color: repeatMode !== 'off' ? 'var(--neon-purple)' : '#fff', opacity: repeatMode !== 'off' ? 1 : 0.8 }}
+                    >
+                        {repeatMode === 'one' ? <Repeat1 size={18} /> : <Repeat size={18} />}
                     </button>
                 </div>
 
@@ -279,6 +358,20 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
                     >
                         {isExpanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
                     </button>
+
+                    {onToggleFavorite && (
+                        <button
+                            onClick={() => onToggleFavorite(currentTrack.id)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', marginLeft: '0.5rem' }}
+                            title="Favorite"
+                        >
+                            <Star
+                                size={20}
+                                fill={favoriteIds.includes(currentTrack.id) ? '#FFD700' : 'none'}
+                                color={favoriteIds.includes(currentTrack.id) ? '#FFD700' : 'var(--text-secondary)'}
+                            />
+                        </button>
+                    )}
                 </div>
             </div>
 
