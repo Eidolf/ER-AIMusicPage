@@ -272,10 +272,10 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
             </div>
 
             {/* Main Bar */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', maxWidth: '1200px', width: '100%', margin: '0 auto' }}>
+            <div className="player-main-bar">
 
                 {/* Track Info */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1, overflow: 'hidden' }}>
+                <div className="player-track-info">
                     <div style={{
                         width: '50px',
                         height: '50px',
@@ -304,7 +304,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
                 </div>
 
                 {/* Controls */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', flex: 1, justifyContent: 'center' }}>
+                <div className="player-controls">
                     <button
                         onClick={() => setIsMix(!isMix)}
                         className="control-btn"
@@ -337,19 +337,21 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
                 </div>
 
                 {/* Volume & Extras */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1, justifyContent: 'flex-end' }}>
-                    <button onClick={toggleMute} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}>
-                        {isMuted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
-                    </button>
-                    <input
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.05"
-                        value={isMuted ? 0 : volume}
-                        onChange={handleVolumeChange}
-                        style={{ width: '80px', accentColor: 'var(--neon-cyan)' }}
-                    />
+                <div className="player-extras">
+                    <div className="volume-control-wrapper">
+                        <button onClick={toggleMute} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}>
+                            {isMuted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
+                        </button>
+                        <input
+                            type="range"
+                            min="0"
+                            max="1"
+                            step="0.05"
+                            value={isMuted ? 0 : volume}
+                            onChange={handleVolumeChange}
+                            style={{ width: '80px', accentColor: 'var(--neon-cyan)' }}
+                        />
+                    </div>
 
                     <button
                         onClick={() => setIsExpanded(!isExpanded)}
@@ -419,24 +421,42 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
                                 )}
                             </div>
 
-                            {isAdmin && (
-                                <div style={{ display: 'flex', gap: '10px' }} onClick={e => e.stopPropagation()}>
+                            <div style={{ display: 'flex', gap: '10px' }} onClick={e => e.stopPropagation()}>
+                                {isAdmin && (
+                                    <>
+                                        <button
+                                            onClick={(e) => openLinkModal(e, track)}
+                                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--neon-purple)' }}
+                                            title="Link to Video"
+                                        >
+                                            <LinkIcon size={16} />
+                                        </button>
+                                        <button
+                                            onClick={(e) => handleDeleteTrack(e, track.id)}
+                                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff4d4d' }}
+                                            title="Delete Track"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </>
+                                )}
+                                {onToggleFavorite && (
                                     <button
-                                        onClick={(e) => openLinkModal(e, track)}
-                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--neon-purple)' }}
-                                        title="Link to Video"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onToggleFavorite(track.id);
+                                        }}
+                                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.2rem' }}
+                                        title="Favorite"
                                     >
-                                        <LinkIcon size={16} />
+                                        <Star
+                                            size={16}
+                                            fill={favoriteIds.includes(track.id) ? '#FFD700' : 'none'}
+                                            color={favoriteIds.includes(track.id) ? '#FFD700' : 'var(--text-secondary)'}
+                                        />
                                     </button>
-                                    <button
-                                        onClick={(e) => handleDeleteTrack(e, track.id)}
-                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff4d4d' }}
-                                        title="Delete Track"
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
-                                </div>
-                            )}
+                                )}
+                            </div>
                         </div>
                     ))}
                 </div>
@@ -471,6 +491,64 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
             )}
 
             <style>{`
+                .player-main-bar {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    max-width: 1200px;
+                    width: 100%;
+                    margin: 0 auto;
+                }
+                .player-track-info {
+                    display: flex;
+                    align-items: center;
+                    gap: 1rem;
+                    flex: 1;
+                    overflow: hidden;
+                }
+                .player-controls {
+                    display: flex;
+                    align-items: center;
+                    gap: 1.5rem;
+                    flex: 1;
+                    justify-content: center;
+                }
+                .player-extras {
+                    display: flex;
+                    align-items: center;
+                    gap: 1rem;
+                    flex: 1;
+                    justify-content: flex-end;
+                }
+                .volume-control-wrapper {
+                    display: flex;
+                    align-items: center;
+                    gap: 0.5rem;
+                }
+                
+                @media (max-width: 768px) {
+                    .player-main-bar {
+                        flex-wrap: wrap;
+                        row-gap: 1rem;
+                    }
+                    .player-track-info {
+                        flex: 1 1 50%;
+                    }
+                    .player-extras {
+                        flex: 1 1 auto;
+                        justify-content: flex-end;
+                    }
+                    .player-controls {
+                        flex: 1 1 100%;
+                        order: 3;
+                        justify-content: space-between;
+                        gap: 0.5rem;
+                    }
+                    .volume-control-wrapper {
+                        display: none;
+                    }
+                }
+
                 .control-btn {
                     background: none;
                     border: none;

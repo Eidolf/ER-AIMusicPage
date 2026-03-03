@@ -4,6 +4,7 @@ from typing import List, Dict
 from app.core.db import get_session
 from app.api.v1.endpoints.auth import get_current_user_role, oauth2_scheme
 from app.models.favorite import Favorite, FavoriteToggleRequest
+from app.models.media import Media
 from jose import jwt, JWTError
 from app.core.config import settings
 
@@ -19,7 +20,7 @@ def get_current_user_id(token: str = Depends(oauth2_scheme)) -> str:
     except JWTError:
         raise HTTPException(status_code=401, detail="Could not validate credentials")
 
-@router.get("/", response_model=List[int])
+@router.get("", response_model=List[int])
 async def get_my_favorites(
     session: Session = Depends(get_session),
     user_id: str = Depends(get_current_user_id)
@@ -27,9 +28,9 @@ async def get_my_favorites(
     """
     Get a list of media IDs favorited by the current user.
     """
-    statement = select(Favorite.media_id).where(Favorite.user_id == user_id)
+    statement = select(Favorite).where(Favorite.user_id == user_id)
     results = session.exec(statement).all()
-    return results
+    return [fav.media_id for fav in results]
 
 @router.post("/toggle")
 async def toggle_favorite(
@@ -39,7 +40,19 @@ async def toggle_favorite(
 ):
     """
     Toggle the favorite state of a specific media item for the current user.
+    Synchronizes across related media (video <-> audio).
     """
+    media_ids_to_toggle = [request.media_id]
+    
+    media_item = session.get(Media, request.media_id)
+    if media_item:
+        if media_item.media_type == "audio" and media_item.related_to_id:
+            media_ids_to_toggle.append(media_item.related_to_id)
+        elif media_item.media_type == "video":
+            statement = select(Media.id).where(Media.related_to_id == media_item.id)
+            related_audios = session.exec(statement).all()
+            media_ids_to_toggle.extend(related_audios)
+
     statement = select(Favorite).where(
         Favorite.user_id == user_id,
         Favorite.media_id == request.media_id
@@ -47,14 +60,23 @@ async def toggle_favorite(
     existing_fav = session.exec(statement).first()
 
     if existing_fav:
-        session.delete(existing_fav)
+        # Remove favorites for all related
+        for m_id in media_ids_to_toggle:
+            stmt = select(Favorite).where(Favorite.user_id == user_id, Favorite.media_id == m_id)
+            fav = session.exec(stmt).first()
+            if fav:
+                session.delete(fav)
         session.commit()
-        return {"status": "removed", "media_id": request.media_id}
+        return {"status": "removed", "synced_ids": media_ids_to_toggle}
     else:
-        new_fav = Favorite(user_id=user_id, media_id=request.media_id)
-        session.add(new_fav)
+        # Add favorites for all related
+        for m_id in media_ids_to_toggle:
+            stmt = select(Favorite).where(Favorite.user_id == user_id, Favorite.media_id == m_id)
+            if not session.exec(stmt).first():
+                new_fav = Favorite(user_id=user_id, media_id=m_id)
+                session.add(new_fav)
         session.commit()
-        return {"status": "added", "media_id": request.media_id}
+        return {"status": "added", "synced_ids": media_ids_to_toggle}
 
 @router.get("/stats", response_model=Dict[int, int])
 async def get_favorites_stats(

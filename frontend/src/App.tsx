@@ -77,7 +77,21 @@ function App() {
         // Optimistic UI update
         const safeFavorites = Array.isArray(favoriteIds) ? favoriteIds : [];
         const isFav = safeFavorites.includes(mediaId);
-        setFavoriteIds(isFav ? safeFavorites.filter(id => id !== mediaId) : [...safeFavorites, mediaId]);
+
+        const relatedAudioIds = audios.filter(a => a.related_to_id === mediaId).map(a => a.id);
+        const relatedVideoId = audios.find(a => a.id === mediaId)?.related_to_id;
+
+        const idsToToggle = [mediaId, ...relatedAudioIds];
+        if (relatedVideoId) idsToToggle.push(relatedVideoId);
+
+        setFavoriteIds(prev => {
+            const current = Array.isArray(prev) ? prev : [];
+            if (isFav) {
+                return current.filter(id => !idsToToggle.includes(id));
+            } else {
+                return Array.from(new Set([...current, ...idsToToggle]));
+            }
+        });
 
         try {
             const res = await fetch('/api/v1/favorites/toggle', {
