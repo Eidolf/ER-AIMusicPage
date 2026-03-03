@@ -51,8 +51,14 @@ function App() {
         if (!token) return;
         try {
             const res = await fetch('/api/v1/favorites', { headers: { 'Authorization': `Bearer ${token}` } });
-            if (res.ok) setFavoriteIds(await res.json());
-        } catch (e) { console.error("Fetch favorites failed", e); }
+            if (res.ok) {
+                const data = await res.json();
+                setFavoriteIds(Array.isArray(data) ? data : []);
+            }
+        } catch (e) {
+            console.error("Fetch favorites failed", e);
+            setFavoriteIds([]);
+        }
     };
 
     const fetchFavoriteStats = async () => {
@@ -69,8 +75,9 @@ function App() {
         if (!token) return;
 
         // Optimistic UI update
-        const isFav = favoriteIds.includes(mediaId);
-        setFavoriteIds(prev => isFav ? prev.filter(id => id !== mediaId) : [...prev, mediaId]);
+        const safeFavorites = Array.isArray(favoriteIds) ? favoriteIds : [];
+        const isFav = safeFavorites.includes(mediaId);
+        setFavoriteIds(isFav ? safeFavorites.filter(id => id !== mediaId) : [...safeFavorites, mediaId]);
 
         try {
             const res = await fetch('/api/v1/favorites/toggle', {
@@ -121,8 +128,9 @@ function App() {
         return <Login onLogin={handleLogin} />
     }
 
-    const filteredVideos = showFavoritesOnly ? videos.filter(v => favoriteIds.includes(v.id)) : videos;
-    const filteredAudios = showFavoritesOnly ? audios.filter(a => favoriteIds.includes(a.id)) : audios;
+    const safeFavoriteIds = Array.isArray(favoriteIds) ? favoriteIds : [];
+    const filteredVideos = showFavoritesOnly ? videos.filter(v => safeFavoriteIds.includes(v.id)) : videos;
+    const filteredAudios = showFavoritesOnly ? audios.filter(a => safeFavoriteIds.includes(a.id)) : audios;
 
     return (
         <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
@@ -184,7 +192,7 @@ function App() {
                         onRefresh={fetchMedia}
                         stopAll={activeMediaType === 'audio'}
                         onPlay={() => setActiveMediaType('video')}
-                        favoriteIds={favoriteIds}
+                        favoriteIds={safeFavoriteIds}
                         favoriteStats={favoriteStats}
                         onToggleFavorite={toggleFavorite}
                     />
@@ -220,7 +228,7 @@ function App() {
                     role={role}
                     shouldPause={activeMediaType === 'video'}
                     onPlay={() => setActiveMediaType('audio')}
-                    favoriteIds={favoriteIds}
+                    favoriteIds={safeFavoriteIds}
                     onToggleFavorite={toggleFavorite}
                 />
                 <div style={{ paddingBottom: '100px' }}></div>
