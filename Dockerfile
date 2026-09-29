@@ -1,26 +1,20 @@
 # Build Frontend
 FROM node:20-alpine as frontend-build
 WORKDIR /app/frontend
-COPY frontend/package.json .
+COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm install
 COPY frontend/ .
 RUN npm run build
-
-# Build Backend
-FROM python:3.11-slim as backend-build
-WORKDIR /app
-RUN pip install poetry
-COPY backend/pyproject.toml backend/poetry.lock* /app/
-RUN poetry config virtualenvs.create false \
-    && poetry install --no-interaction --no-ansi --no-root
-COPY backend/ /app/
 
 # Final Stage
 FROM python:3.11-slim
 WORKDIR /app
 
-# Install runtime deps
-RUN pip install poetry && poetry config virtualenvs.create false
+# Setup virtual environment and install runtime dependencies
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN python -m venv $VIRTUAL_ENV && pip install --upgrade pip poetry
+
 COPY backend/pyproject.toml backend/poetry.lock* /app/
 RUN mkdir -p data && chmod 777 data
 RUN poetry install --no-interaction --no-ansi --no-root --only main
