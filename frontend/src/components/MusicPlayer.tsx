@@ -216,13 +216,23 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
         }
     };
 
-    // Auto-play when track changes if already playing
+    const previousTrackIdRef = useRef<number | null>(null);
+
+    // Update track src only when currentTrack changes, preserving playback position on play/pause
     useEffect(() => {
-        if (audioRef.current && currentTrack) {
+        if (!audioRef.current || !currentTrack) return;
+
+        const isNewTrack = previousTrackIdRef.current !== currentTrack.id;
+        if (isNewTrack) {
+            previousTrackIdRef.current = currentTrack.id;
             audioRef.current.src = currentTrack.url;
-            if (isPlaying) {
-                audioRef.current.play().catch(e => console.error("Playback failed", e));
-            }
+            setCurrentTime(0);
+        }
+
+        if (isPlaying) {
+            audioRef.current.play().catch(e => console.error("Playback failed", e));
+        } else {
+            audioRef.current.pause();
         }
     }, [currentTrack, isPlaying]);
 
