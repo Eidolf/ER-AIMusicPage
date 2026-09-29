@@ -67,6 +67,7 @@ const VideoCard: React.FC<{
                         ref={videoRef}
                         src={video.url}
                         controls
+                        preload="none"
                         style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }}
                         onPlay={() => onPlay(video.id)}
                     />
@@ -323,6 +324,21 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ videos, audios, role, onRe
         return ['All', ...Array.from(new Set(allGenres))];
     }, [videos]);
 
+    // Responsive initial & batch count: 6 for mobile (< 768px), 12 for desktop
+    const getBatchSize = () => (typeof window !== 'undefined' && window.innerWidth < 768 ? 6 : 12);
+    const [batchSize, setBatchSize] = useState<number>(getBatchSize);
+    const [visibleCount, setVisibleCount] = useState<number>(getBatchSize);
+    const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        const handleResize = () => {
+            const nextBatch = getBatchSize();
+            setBatchSize(nextBatch);
+        };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
     // Filter Logic
     const filteredVideos = useMemo(() => {
         let result = videos;
@@ -347,6 +363,39 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ videos, audios, role, onRe
         }
         return result;
     }, [videos, selectedGenre, searchQuery, familyFilterId]);
+
+    // Reset visible count when filter or query changes
+    useEffect(() => {
+        setVisibleCount(batchSize);
+    }, [searchQuery, selectedGenre, familyFilterId, batchSize]);
+
+    // Infinite scroll observer to load next batch when scrolling near bottom
+    useEffect(() => {
+        const sentinel = loadMoreSentinelRef.current;
+        if (!sentinel) return;
+
+        const observer = new IntersectionObserver((entries) => {
+            if (entries[0].isIntersecting) {
+                setVisibleCount(prev => {
+                    if (prev < filteredVideos.length) {
+                        return prev + batchSize;
+                    }
+                    return prev;
+                });
+            }
+        }, {
+            root: null,
+            rootMargin: '300px 0px',
+            threshold: 0
+        });
+
+        observer.observe(sentinel);
+        return () => observer.disconnect();
+    }, [filteredVideos.length, batchSize]);
+
+    const displayedVideos = useMemo(() => {
+        return filteredVideos.slice(0, visibleCount);
+    }, [filteredVideos, visibleCount]);
 
     // Handlers
     const handleEdit = (video: VideoItem) => {
@@ -469,7 +518,7 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ videos, audios, role, onRe
                 gap: '2rem',
                 padding: '1rem'
             }}>
-                {filteredVideos.map((video) => {
+                {displayedVideos.map((video) => {
                     const childVideos = relationships.get(video.id);
                     const parentVideo = video.related_to_id ? videos.find(v => v.id === video.related_to_id) : undefined;
 
@@ -499,6 +548,24 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ videos, audios, role, onRe
                     </div>
                 )}
             </div>
+
+            {/* Sentinel for infinite scroll loading */}
+            {visibleCount < filteredVideos.length && (
+                <div
+                    ref={loadMoreSentinelRef}
+                    style={{
+                        height: '60px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'var(--neon-cyan)',
+                        fontSize: '0.85rem',
+                        letterSpacing: '1px'
+                    }}
+                >
+                    LOADING MORE VIDEOS...
+                </div>
+            )}
 
             {/* Edit Modal */}
             {editingVideo && (
