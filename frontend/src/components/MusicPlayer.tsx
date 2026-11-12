@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { VideoItem } from '../types';
 import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Maximize2, Minimize2, ListMusic, Trash2, Link as LinkIcon, Star, Repeat, Repeat1, Shuffle } from 'lucide-react';
 import axios from 'axios';
@@ -48,20 +48,80 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
     // Check admin role
     const isAdmin = role === 'admin';
 
+    // --- Android / Mobile background playback fix ---
+    // Tracks whether we WANT to be playing (intent), independently of audio element state
+    const intendToPlayRef = useRef(false);
+    // Stall recovery timer
+    const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const clearStallTimer = () => {
+        if (stallTimerRef.current) {
+            clearTimeout(stallTimerRef.current);
+            stallTimerRef.current = null;
+        }
+    };
+
+    // Attempt to resume after a stall / visibility restore
+    const attemptResume = useCallback(() => {
+        const audio = audioRef.current;
+        if (!audio || !intendToPlayRef.current) return;
+        audio.play().catch(() => {
+            // If blocked, retry once after a short delay
+            setTimeout(() => {
+                if (intendToPlayRef.current && audioRef.current) {
+                    audioRef.current.play().catch(console.warn);
+                }
+            }, 800);
+        });
+    }, []);
+
+    // Page Visibility API: resume when screen is unlocked / tab becomes visible again
+    useEffect(() => {
+        const onVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                attemptResume();
+            }
+        };
+        document.addEventListener('visibilitychange', onVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+    }, [attemptResume]);
+
+    // Audio stall / waiting recovery
+    const handleStall = useCallback(() => {
+        clearStallTimer();
+        if (!intendToPlayRef.current) return;
+        stallTimerRef.current = setTimeout(() => {
+            const audio = audioRef.current;
+            if (!audio || !intendToPlayRef.current) return;
+            // Save position, reload, seek back, play
+            const pos = audio.currentTime;
+            audio.load();
+            audio.currentTime = pos;
+            audio.play().catch(console.warn);
+        }, 2000); // wait 2 s before recovery reload
+    }, []);
+
+    const handleCanPlay = useCallback(() => {
+        clearStallTimer();
+        attemptResume();
+    }, [attemptResume]);
+
     // Pause audio if external signal (shouldPause) is on
     useEffect(() => {
         if (shouldPause && isPlaying) {
+            intendToPlayRef.current = false;
             if (audioRef.current) audioRef.current.pause();
             setIsPlaying(false);
         }
     }, [shouldPause, isPlaying]);
-
     const togglePlay = () => {
         if (audioRef.current) {
             if (isPlaying) {
+                intendToPlayRef.current = false;
                 audioRef.current.pause();
             } else {
-                audioRef.current.play();
+                intendToPlayRef.current = true;
+                audioRef.current.play().catch(console.warn);
                 if (onPlay) onPlay(); // Notify parent
             }
             setIsPlaying(!isPlaying);
@@ -100,6 +160,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
 
         setCurrentTrackIndex(nextIndex);
         setIsPlaying(true);
+        intendToPlayRef.current = true;
     };
 
     const playPrev = () => {
@@ -123,6 +184,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
 
         setCurrentTrackIndex(prevIndex);
         setIsPlaying(true);
+        intendToPlayRef.current = true;
     };
 
     const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -225,16 +287,41 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
         const isNewTrack = previousTrackIdRef.current !== currentTrack.id;
         if (isNewTrack) {
             previousTrackIdRef.current = currentTrack.id;
+            clearStallTimer();
+            audioRef.current.preload = 'auto';
             audioRef.current.src = currentTrack.url;
             setCurrentTime(0);
         }
 
         if (isPlaying) {
+            intendToPlayRef.current = true;
             audioRef.current.play().catch(e => console.error("Playback failed", e));
         } else {
+            if (!isNewTrack) intendToPlayRef.current = false;
             audioRef.current.pause();
         }
-    }, [currentTrack, isPlaying]);
+
+        // --- Media Session API (Android lock-screen controls) ---
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.metadata = new MediaMetadata({
+                title: currentTrack.title || currentTrack.filename,
+                artist: currentTrack.genre || 'Unknown',
+                album: 'ER AI Music',
+            });
+            navigator.mediaSession.setActionHandler('play', () => {
+                intendToPlayRef.current = true;
+                audioRef.current?.play().catch(console.warn);
+                setIsPlaying(true);
+            });
+            navigator.mediaSession.setActionHandler('pause', () => {
+                intendToPlayRef.current = false;
+                audioRef.current?.pause();
+                setIsPlaying(false);
+            });
+            navigator.mediaSession.setActionHandler('previoustrack', playPrev);
+            navigator.mediaSession.setActionHandler('nexttrack', playNext);
+        }
+    }, [currentTrack, isPlaying]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Handle end of track manually to override default react behavior sometimes
     useEffect(() => {
@@ -393,6 +480,11 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
                 onEnded={playNext}
                 onTimeUpdate={handleTimeUpdate}
                 onLoadedMetadata={handleTimeUpdate}
+                onStalled={handleStall}
+                onWaiting={handleStall}
+                onCanPlay={handleCanPlay}
+                onError={handleStall}
+                preload="auto"
             />
 
             {/* Expanded Playlist View */}
@@ -407,7 +499,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
                     {audios.map((track, index) => (
                         <div
                             key={track.id}
-                            onClick={() => { setCurrentTrackIndex(index); setIsPlaying(true); if (onPlay) onPlay(); }}
+                            onClick={() => { setCurrentTrackIndex(index); setIsPlaying(true); intendToPlayRef.current = true; if (onPlay) onPlay(); }}
                             style={{
                                 padding: '0.5rem',
                                 display: 'flex',
