@@ -4,6 +4,12 @@
 
 A secure, modern, and high-performance platform for displaying and managing AI-generated music and videos.
 
+## Project ecosystem
+
+- [Agent instructions](AGENTS.md)
+- [Project profile](https://github.com/Eidolf/ER-KnowledgeBase/blob/main/Projects/ER-AIMusicPage/README.md) (private)
+- [Knowledge-Platform](https://github.com/Eidolf/Knowledge-Platform)
+
 ## Features
 
 *   **Glassmorphism UI**: Modern, dark, and neon-accented interface.
