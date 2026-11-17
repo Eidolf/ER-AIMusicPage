@@ -1,15 +1,19 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-import structlog
 import os
 from contextlib import asynccontextmanager
-from app.core.config import settings
+from pathlib import Path
+
+import structlog
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
 from app.api.v1.api import api_router
-from app.api.v1.endpoints import auth, media, guests, favorites
+from app.api.v1.endpoints import auth, favorites, guests, media
 from app.api.v1.endpoints import settings as settings_endpoint
+from app.core.config import settings
 from app.core.db import init_db
+from app.core.static_files import resolve_static_file
 
 logger = structlog.get_logger()
 
@@ -61,8 +65,9 @@ async def serve_spa(full_path: str):
     if full_path.startswith("api") or full_path.startswith("limit_static"):
          return {"detail": "Not Found"}
     
-    possible_path = os.path.join(static_dir, full_path)
-    if os.path.exists(possible_path) and os.path.isfile(possible_path):
-        return FileResponse(possible_path)
+    static_root = Path(static_dir).resolve()
+    static_file = resolve_static_file(static_root, full_path)
+    if static_file is not None:
+        return FileResponse(static_file)
 
-    return FileResponse(os.path.join(static_dir, "index.html"))
+    return FileResponse(static_root / "index.html")
