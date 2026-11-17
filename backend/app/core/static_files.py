@@ -1,9 +1,12 @@
+import os
 from pathlib import Path
 
 
 def resolve_static_file(static_root: Path, requested_path: str) -> Path | None:
-    resolved_root = static_root.resolve()
-    candidate = (resolved_root / requested_path).resolve()
-    if candidate.is_relative_to(resolved_root) and candidate.is_file():
-        return candidate
+    resolved_root = os.path.realpath(static_root)
+    candidate = os.path.realpath(os.path.join(resolved_root, requested_path))
+    if not candidate.startswith(resolved_root + os.sep):
+        return None
+    if os.path.isfile(candidate):
+        return Path(candidate)
     return None
