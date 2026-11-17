@@ -42,40 +42,37 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
     const [duration, setDuration] = useState(0);
 
     const audioRef = useRef<HTMLAudioElement>(null);
+    const previousSourceRef = useRef<{ audio: HTMLAudioElement; id: number; url: string } | null>(null);
     const hasAudio = audios && audios.length > 0;
     const currentTrack = hasAudio ? audios[currentTrackIndex] : null;
 
     // Check admin role
     const isAdmin = role === 'admin';
 
-    // --- Android / Mobile background playback fix ---
-    // Tracks whether we WANT to be playing (intent), independently of audio element state
+    // Keep playback intent across browser interruptions, but not explicit pauses.
     const intendToPlayRef = useRef(false);
-    // Stall recovery timer
-    const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const clearStallTimer = () => {
-        if (stallTimerRef.current) {
-            clearTimeout(stallTimerRef.current);
-            stallTimerRef.current = null;
-        }
-    };
-
-    // Attempt to resume after a stall / visibility restore
-    const attemptResume = useCallback(() => {
+    const playAudio = useCallback(() => {
         const audio = audioRef.current;
-        if (!audio || !intendToPlayRef.current) return;
-        audio.play().catch(() => {
-            // If blocked, retry once after a short delay
-            setTimeout(() => {
-                if (intendToPlayRef.current && audioRef.current) {
-                    audioRef.current.play().catch(console.warn);
-                }
-            }, 800);
+        if (!audio || !intendToPlayRef.current || audio.error) return;
+        const source = audio.src;
+        audio.play().then(() => {
+            if (audioRef.current === audio && audio.src === source && intendToPlayRef.current && !audio.paused) {
+                setIsPlaying(true);
+            }
+        }).catch((error: unknown) => {
+            console.error("Playback failed", error);
+            if (audioRef.current === audio && audio.src === source && audio.paused) {
+                setIsPlaying(false);
+            }
         });
     }, []);
 
-    // Page Visibility API: resume when screen is unlocked / tab becomes visible again
+    const attemptResume = useCallback(() => {
+        const audio = audioRef.current;
+        if (audio?.paused && !audio.ended) playAudio();
+    }, [playAudio]);
+
     useEffect(() => {
         const onVisibilityChange = () => {
             if (document.visibilityState === 'visible') {
@@ -83,61 +80,63 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
             }
         };
         document.addEventListener('visibilitychange', onVisibilityChange);
-        return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+        document.addEventListener('resume', attemptResume);
+        window.addEventListener('pageshow', attemptResume);
+        return () => {
+            document.removeEventListener('visibilitychange', onVisibilityChange);
+            document.removeEventListener('resume', attemptResume);
+            window.removeEventListener('pageshow', attemptResume);
+        };
     }, [attemptResume]);
 
-    // Audio stall / waiting recovery
-    const handleStall = useCallback(() => {
-        clearStallTimer();
-        if (!intendToPlayRef.current) return;
-        stallTimerRef.current = setTimeout(() => {
-            const audio = audioRef.current;
-            if (!audio || !intendToPlayRef.current) return;
-            // Save position, reload, seek back, play
-            const pos = audio.currentTime;
-            audio.load();
-            audio.currentTime = pos;
-            audio.play().catch(console.warn);
-        }, 2000); // wait 2 s before recovery reload
+    const pausePlayback = useCallback(() => {
+        intendToPlayRef.current = false;
+        audioRef.current?.pause();
+        setIsPlaying(false);
     }, []);
 
-    const handleCanPlay = useCallback(() => {
-        clearStallTimer();
-        attemptResume();
-    }, [attemptResume]);
+    const setTrackSource = useCallback((track: VideoItem) => {
+        const audio = audioRef.current;
+        if (!audio) return;
+        const previous = previousSourceRef.current;
+        if (previous?.audio === audio && previous.id === track.id && previous.url === track.url && !audio.error) return;
+        previousSourceRef.current = { audio, id: track.id, url: track.url };
+        audio.src = track.url;
+        setCurrentTime(0);
+        setDuration(0);
+    }, []);
+
+    const startTrack = useCallback((index: number) => {
+        const track = audios[index];
+        if (!track) return;
+        intendToPlayRef.current = true;
+        // Start in the media/user event, not in a deferred React effect.
+        setTrackSource(track);
+        setCurrentTrackIndex(index);
+        setIsPlaying(true);
+        playAudio();
+        onPlay?.();
+    }, [audios, setTrackSource, playAudio, onPlay]);
 
     // Pause audio if external signal (shouldPause) is on
     useEffect(() => {
-        if (shouldPause && isPlaying) {
-            intendToPlayRef.current = false;
-            if (audioRef.current) audioRef.current.pause();
-            setIsPlaying(false);
-        }
-    }, [shouldPause, isPlaying]);
+        if (shouldPause) pausePlayback();
+    }, [shouldPause, isPlaying, pausePlayback]);
+
     const togglePlay = () => {
-        if (audioRef.current) {
-            if (isPlaying) {
-                intendToPlayRef.current = false;
-                audioRef.current.pause();
-            } else {
-                intendToPlayRef.current = true;
-                audioRef.current.play().catch(console.warn);
-                if (onPlay) onPlay(); // Notify parent
-            }
-            setIsPlaying(!isPlaying);
+        if (isPlaying) {
+            pausePlayback();
+        } else {
+            startTrack(currentTrackIndex);
         }
     };
 
-    const playNext = () => {
+    const playNext = useCallback((autoAdvance = false) => {
         if (!hasAudio) return;
 
-        if (repeatMode === 'one' && audioRef.current?.currentTime === audioRef.current?.duration) {
-            // Let the audio inherently loop or we just reset it
-            if (audioRef.current) {
-                audioRef.current.currentTime = 0;
-                audioRef.current.play();
-                return;
-            }
+        if (repeatMode === 'one' && autoAdvance) {
+            startTrack(currentTrackIndex);
+            return;
         }
 
         let nextIndex;
@@ -150,7 +149,8 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
         } else {
             nextIndex = currentTrackIndex + 1;
             if (nextIndex >= audios.length) {
-                if (repeatMode === 'off' && audioRef.current?.currentTime === audioRef.current?.duration) {
+                if (repeatMode === 'off' && autoAdvance) {
+                    intendToPlayRef.current = false;
                     setIsPlaying(false);
                     return; // Stop at end of list if not repeating
                 }
@@ -158,12 +158,10 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
             }
         }
 
-        setCurrentTrackIndex(nextIndex);
-        setIsPlaying(true);
-        intendToPlayRef.current = true;
-    };
+        startTrack(nextIndex);
+    }, [hasAudio, repeatMode, isMix, audios.length, currentTrackIndex, startTrack]);
 
-    const playPrev = () => {
+    const playPrev = useCallback(() => {
         if (!hasAudio) return;
 
         if (audioRef.current && audioRef.current.currentTime > 3) {
@@ -182,10 +180,8 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
             if (prevIndex < 0) prevIndex = audios.length - 1;
         }
 
-        setCurrentTrackIndex(prevIndex);
-        setIsPlaying(true);
-        intendToPlayRef.current = true;
-    };
+        startTrack(prevIndex);
+    }, [hasAudio, isMix, mixHistory, currentTrackIndex, audios.length, startTrack]);
 
     const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newVol = parseFloat(e.target.value);
@@ -278,57 +274,48 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
         }
     };
 
-    const previousTrackIdRef = useRef<number | null>(null);
-
-    // Update track src only when currentTrack changes, preserving playback position on play/pause
+    // Also synchronize initial loads and playlist updates that did not come from a control.
     useEffect(() => {
-        if (!audioRef.current || !currentTrack) return;
-
-        const isNewTrack = previousTrackIdRef.current !== currentTrack.id;
-        if (isNewTrack) {
-            previousTrackIdRef.current = currentTrack.id;
-            clearStallTimer();
-            audioRef.current.preload = 'auto';
-            audioRef.current.src = currentTrack.url;
-            setCurrentTime(0);
+        if (!currentTrack) {
+            pausePlayback();
+            return;
         }
+        setTrackSource(currentTrack);
+        attemptResume();
+    }, [currentTrack, setTrackSource, attemptResume, pausePlayback]);
 
-        if (isPlaying) {
-            intendToPlayRef.current = true;
-            audioRef.current.play().catch(e => console.error("Playback failed", e));
-        } else {
-            if (!isNewTrack) intendToPlayRef.current = false;
-            audioRef.current.pause();
-        }
-
-        // --- Media Session API (Android lock-screen controls) ---
-        if ('mediaSession' in navigator) {
+    useEffect(() => {
+        if (!('mediaSession' in navigator) || !currentTrack) return;
+        if (typeof MediaMetadata !== 'undefined') {
             navigator.mediaSession.metadata = new MediaMetadata({
                 title: currentTrack.title || currentTrack.filename,
                 artist: currentTrack.genre || 'Unknown',
                 album: 'ER AI Music',
             });
-            navigator.mediaSession.setActionHandler('play', () => {
-                intendToPlayRef.current = true;
-                audioRef.current?.play().catch(console.warn);
-                setIsPlaying(true);
-            });
-            navigator.mediaSession.setActionHandler('pause', () => {
-                intendToPlayRef.current = false;
-                audioRef.current?.pause();
-                setIsPlaying(false);
-            });
-            navigator.mediaSession.setActionHandler('previoustrack', playPrev);
-            navigator.mediaSession.setActionHandler('nexttrack', playNext);
         }
-    }, [currentTrack, isPlaying]); // eslint-disable-line react-hooks/exhaustive-deps
+        navigator.mediaSession.setActionHandler('play', () => startTrack(currentTrackIndex));
+        navigator.mediaSession.setActionHandler('pause', pausePlayback);
+        navigator.mediaSession.setActionHandler('previoustrack', playPrev);
+        navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
+        return () => {
+            navigator.mediaSession.setActionHandler('play', null);
+            navigator.mediaSession.setActionHandler('pause', null);
+            navigator.mediaSession.setActionHandler('previoustrack', null);
+            navigator.mediaSession.setActionHandler('nexttrack', null);
+            navigator.mediaSession.metadata = null;
+        };
+    }, [currentTrack, currentTrackIndex, startTrack, pausePlayback, playPrev, playNext]);
 
-    // Handle end of track manually to override default react behavior sometimes
     useEffect(() => {
-        if (audioRef.current) {
-            audioRef.current.loop = repeatMode === 'one';
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = currentTrack ? (isPlaying ? 'playing' : 'paused') : 'none';
         }
-    }, [repeatMode]);
+    }, [currentTrack, isPlaying]);
+
+    const handleAudioError = () => {
+        console.error("Audio media error", audioRef.current?.error);
+        pausePlayback();
+    };
 
     const toggleRepeatMode = () => {
         if (repeatMode === 'off') setRepeatMode('all');
@@ -419,7 +406,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
                         {isPlaying ? <Pause fill="#000" size={24} /> : <Play fill="#000" size={24} style={{ marginLeft: '4px' }} />}
                     </button>
 
-                    <button onClick={playNext} className="control-btn" title="Next">
+                    <button onClick={() => playNext()} className="control-btn" title="Next">
                         <SkipForward size={20} />
                     </button>
 
@@ -477,13 +464,14 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
             {/* Hidden Audio Element */}
             <audio
                 ref={audioRef}
-                onEnded={playNext}
+                onEnded={() => { if (intendToPlayRef.current) playNext(true); }}
                 onTimeUpdate={handleTimeUpdate}
                 onLoadedMetadata={handleTimeUpdate}
-                onStalled={handleStall}
-                onWaiting={handleStall}
-                onCanPlay={handleCanPlay}
-                onError={handleStall}
+                onCanPlay={attemptResume}
+                onPlaying={() => setIsPlaying(true)}
+                onPause={() => setIsPlaying(false)}
+                onError={handleAudioError}
+                loop={repeatMode === 'one'}
                 preload="auto"
             />
 
@@ -499,7 +487,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
                     {audios.map((track, index) => (
                         <div
                             key={track.id}
-                            onClick={() => { setCurrentTrackIndex(index); setIsPlaying(true); intendToPlayRef.current = true; if (onPlay) onPlay(); }}
+                            onClick={() => startTrack(index)}
                             style={{
                                 padding: '0.5rem',
                                 display: 'flex',

@@ -92,5 +92,9 @@ The project follows a Domain-Driven Design (DDD) approach with separation of con
 *   `frontend/src/components`: React Components
 *   `.github/workflows`: CI/CD Orchestration
 
+## Playback diagnostics
+
+*   [Android audio playback analysis and minimal stabilization](docs/audio-playback-android-analysis.md) (German): transition behavior, background playback limits, changes, risks, and device validation.
+
 ## License
 Private / Proprietary
