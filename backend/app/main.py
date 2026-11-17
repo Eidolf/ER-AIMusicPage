@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import structlog
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -70,4 +70,7 @@ async def serve_spa(full_path: str):
     if static_file is not None:
         return FileResponse(static_file)
 
-    return FileResponse(static_root / "index.html")
+    index_file = resolve_static_file(static_root, "index.html")
+    if index_file is None:
+        raise HTTPException(status_code=404, detail="Not Found")
+    return FileResponse(index_file)

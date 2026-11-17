@@ -16,6 +16,7 @@ def test_resolve_static_file_rejects_paths_outside_static_root(tmp_path):
     secret = tmp_path / "secret.txt"
     secret.write_text("secret")
     (static_root / "linked-secret.txt").symlink_to(secret)
+    (static_root / "index.html").symlink_to(secret)
 
-    for path in ("../secret.txt", "linked-secret.txt"):
+    for path in ("../secret.txt", "linked-secret.txt", "index.html", "missing\x00file"):
         assert resolve_static_file(static_root, path) is None
