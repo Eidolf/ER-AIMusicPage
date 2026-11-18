@@ -1,5 +1,30 @@
 # Audiowiedergabe: Android-Analyse und minimale Stabilisierung
 
+## Temporäre Diagnose für Android 17
+
+1. Im Player die Wiedergabeliste öffnen und **Record playback diagnostics**
+   einschalten. Die Aufzeichnung ist nach einem Seitenaufruf standardmäßig aus.
+2. Titel starten, den Bildschirm sperren und den Stillstand reproduzieren.
+   Nach dem Entsperren möglichst vor einem weiteren Play-Klick wieder die
+   Wiedergabeliste öffnen, die Aufzeichnung ausschalten und **Export diagnostics
+   (JSON)** wählen. Der Export ist auch während der Aufzeichnung möglich.
+3. Die JSON-Datei nach `sequence` lesen: `track-end` und `track-start` zeigen
+   den Titelwechsel, `play-request` und dessen Ergebnis sind per `requestId`
+   verknüpft. `pause-request` nennt den App-Auslöser, `pause` ist das native
+   Medienereignis. `trackId` ist der zuletzt gerenderte Titel und `audioTrackId`
+   die dem Audioelement zugewiesene Quelle. Beim Übergang können sie kurz abweichen.
+
+Der Export enthält die letzten 200 Ereignisse mit UTC-Zeit und monotoner
+Zeit innerhalb der Seite. `discardedEvents` zeigt an, ob frühere Einträge
+verdrängt wurden. Es werden keine URLs oder Anmeldedaten protokolliert. Die
+Daten bleiben im Arbeitsspeicher der Seite und werden nicht übertragen:
+Vor einem Reload oder Schließen des Tabs exportieren. Ein Browser-Discard
+kann den Puffer verwerfen. Ein erneutes Einschalten in derselben Seite setzt
+die Aufzeichnung mit dem bisherigen Puffer fort. Die Funktion verändert keine
+Wiedergabe- oder Recovery-Regeln.
+
+## Ursprüngliche Analyse
+
 Stand: 17.11.2026. Untersucht wurde der Repository-Stand vor dieser Änderung
 (`4e4c5d8` enthält die bisherige Player-Implementierung) und die unten beschriebene
 Korrektur. „Android 17“ und „Android 13“ sind die gemeldeten Geräteversionen;

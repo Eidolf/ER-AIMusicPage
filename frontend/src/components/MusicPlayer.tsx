@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { VideoItem } from '../types';
 import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Maximize2, Minimize2, ListMusic, Trash2, Link as LinkIcon, Star, Repeat, Repeat1, Shuffle } from 'lucide-react';
 import axios from 'axios';
+import { usePlayerDiagnostics } from './usePlayerDiagnostics';
 
 interface MusicPlayerProps {
     audios: VideoItem[];
@@ -51,81 +52,103 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
 
     // Keep playback intent across browser interruptions, but not explicit pauses.
     const intendToPlayRef = useRef(false);
+    const diagnostics = usePlayerDiagnostics(audioRef, intendToPlayRef, previousSourceRef, {
+        trackId: currentTrack?.id ?? null,
+        trackIndex: currentTrackIndex,
+        trackCount: audios.length,
+        isPlaying,
+        repeatMode,
+        mix: isMix,
+        shouldPause: Boolean(shouldPause),
+    });
+    const { record } = diagnostics;
 
-    const playAudio = useCallback(() => {
+    const playAudio = useCallback((reason: string) => {
         const audio = audioRef.current;
-        if (!audio || !intendToPlayRef.current || audio.error) return;
+        if (!audio || !intendToPlayRef.current || audio.error) {
+            record('play-skipped', { reason, gate: !audio ? 'no-element' : !intendToPlayRef.current ? 'no-intent' : 'media-error' });
+            return;
+        }
         const source = audio.src;
+        const requestId = record('play-request', { reason }) ?? null;
         audio.play().then(() => {
+            record('play-success', { requestId });
             if (audioRef.current === audio && audio.src === source && intendToPlayRef.current && !audio.paused) {
                 setIsPlaying(true);
             }
         }).catch((error: unknown) => {
             console.error("Playback failed", error);
+            record('play-rejection', { requestId, errorType: error instanceof Error || error instanceof DOMException ? error.name : typeof error });
             if (audioRef.current === audio && audio.src === source && audio.paused) {
                 setIsPlaying(false);
             }
         });
-    }, []);
+    }, [record]);
 
-    const attemptResume = useCallback(() => {
+    const attemptResume = useCallback((reason: string) => {
         const audio = audioRef.current;
-        if (audio?.paused && !audio.ended) playAudio();
-    }, [playAudio]);
+        record('resume-check', { reason });
+        if (audio?.paused && !audio.ended) playAudio(reason);
+    }, [playAudio, record]);
 
     useEffect(() => {
         const onVisibilityChange = () => {
             if (document.visibilityState === 'visible') {
-                attemptResume();
+                attemptResume('visibilitychange');
             }
         };
+        const onResume = () => attemptResume('resume');
+        const onPageShow = () => attemptResume('pageshow');
         document.addEventListener('visibilitychange', onVisibilityChange);
-        document.addEventListener('resume', attemptResume);
-        window.addEventListener('pageshow', attemptResume);
+        document.addEventListener('resume', onResume);
+        window.addEventListener('pageshow', onPageShow);
         return () => {
             document.removeEventListener('visibilitychange', onVisibilityChange);
-            document.removeEventListener('resume', attemptResume);
-            window.removeEventListener('pageshow', attemptResume);
+            document.removeEventListener('resume', onResume);
+            window.removeEventListener('pageshow', onPageShow);
         };
     }, [attemptResume]);
 
-    const pausePlayback = useCallback(() => {
+    const pausePlayback = useCallback((reason: string) => {
+        record('pause-request', { reason });
         intendToPlayRef.current = false;
         audioRef.current?.pause();
         setIsPlaying(false);
-    }, []);
+    }, [record]);
 
     const setTrackSource = useCallback((track: VideoItem) => {
         const audio = audioRef.current;
         if (!audio) return;
         const previous = previousSourceRef.current;
         if (previous?.audio === audio && previous.id === track.id && previous.url === track.url && !audio.error) return;
+        record('source-change', { nextTrackId: track.id });
         previousSourceRef.current = { audio, id: track.id, url: track.url };
         audio.src = track.url;
         setCurrentTime(0);
         setDuration(0);
-    }, []);
+    }, [record]);
 
     const startTrack = useCallback((index: number) => {
         const track = audios[index];
         if (!track) return;
+        record('track-start', { nextTrackId: track.id, nextTrackIndex: index });
         intendToPlayRef.current = true;
         // Start in the media/user event, not in a deferred React effect.
         setTrackSource(track);
         setCurrentTrackIndex(index);
         setIsPlaying(true);
-        playAudio();
+        playAudio('track-start');
         onPlay?.();
-    }, [audios, setTrackSource, playAudio, onPlay]);
+    }, [audios, setTrackSource, playAudio, onPlay, record]);
 
     // Pause audio if external signal (shouldPause) is on
     useEffect(() => {
-        if (shouldPause) pausePlayback();
+        if (shouldPause) pausePlayback('should-pause');
     }, [shouldPause, isPlaying, pausePlayback]);
 
     const togglePlay = () => {
         if (isPlaying) {
-            pausePlayback();
+            pausePlayback('ui');
         } else {
             startTrack(currentTrackIndex);
         }
@@ -150,6 +173,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
             nextIndex = currentTrackIndex + 1;
             if (nextIndex >= audios.length) {
                 if (repeatMode === 'off' && autoAdvance) {
+                    record('playlist-end');
                     intendToPlayRef.current = false;
                     setIsPlaying(false);
                     return; // Stop at end of list if not repeating
@@ -159,7 +183,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
         }
 
         startTrack(nextIndex);
-    }, [hasAudio, repeatMode, isMix, audios.length, currentTrackIndex, startTrack]);
+    }, [hasAudio, repeatMode, isMix, audios.length, currentTrackIndex, startTrack, record]);
 
     const playPrev = useCallback(() => {
         if (!hasAudio) return;
@@ -277,11 +301,11 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
     // Also synchronize initial loads and playlist updates that did not come from a control.
     useEffect(() => {
         if (!currentTrack) {
-            pausePlayback();
+            pausePlayback('missing-track');
             return;
         }
         setTrackSource(currentTrack);
-        attemptResume();
+        attemptResume('track-sync');
     }, [currentTrack, setTrackSource, attemptResume, pausePlayback]);
 
     useEffect(() => {
@@ -293,10 +317,22 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
                 album: 'ER AI Music',
             });
         }
-        navigator.mediaSession.setActionHandler('play', () => startTrack(currentTrackIndex));
-        navigator.mediaSession.setActionHandler('pause', pausePlayback);
-        navigator.mediaSession.setActionHandler('previoustrack', playPrev);
-        navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
+        navigator.mediaSession.setActionHandler('play', () => {
+            record('media-session-action', { action: 'play' });
+            startTrack(currentTrackIndex);
+        });
+        navigator.mediaSession.setActionHandler('pause', () => {
+            record('media-session-action', { action: 'pause' });
+            pausePlayback('media-session');
+        });
+        navigator.mediaSession.setActionHandler('previoustrack', () => {
+            record('media-session-action', { action: 'previoustrack' });
+            playPrev();
+        });
+        navigator.mediaSession.setActionHandler('nexttrack', () => {
+            record('media-session-action', { action: 'nexttrack' });
+            playNext();
+        });
         return () => {
             navigator.mediaSession.setActionHandler('play', null);
             navigator.mediaSession.setActionHandler('pause', null);
@@ -304,7 +340,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
             navigator.mediaSession.setActionHandler('nexttrack', null);
             navigator.mediaSession.metadata = null;
         };
-    }, [currentTrack, currentTrackIndex, startTrack, pausePlayback, playPrev, playNext]);
+    }, [currentTrack, currentTrackIndex, startTrack, pausePlayback, playPrev, playNext, record]);
 
     useEffect(() => {
         if ('mediaSession' in navigator) {
@@ -314,7 +350,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
 
     const handleAudioError = () => {
         console.error("Audio media error", audioRef.current?.error);
-        pausePlayback();
+        pausePlayback('media-error');
     };
 
     const toggleRepeatMode = () => {
@@ -323,8 +359,19 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
         else setRepeatMode('off');
     };
 
-    // If no audios, don't render UI
-    if (!hasAudio || !currentTrack) return null;
+    const diagnosticControls = (
+        <div role="group" aria-label="Playback diagnostics" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
+            <button type="button" className="neon-btn" aria-pressed={diagnostics.status === 'recording'} onClick={diagnostics.toggleRecording}>
+                Record playback diagnostics
+            </button>
+            <span role="status">{diagnostics.status === 'recording' ? 'Recording' : 'Not recording'}</span>
+            {diagnostics.status !== 'off' && (
+                <button type="button" className="neon-btn" onClick={diagnostics.exportEvents}>Export diagnostics (JSON)</button>
+            )}
+        </div>
+    );
+
+    if (!hasAudio || !currentTrack) return diagnostics.status === 'off' ? null : diagnosticControls;
 
     return (
         <div style={{
@@ -464,10 +511,13 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
             {/* Hidden Audio Element */}
             <audio
                 ref={audioRef}
-                onEnded={() => { if (intendToPlayRef.current) playNext(true); }}
+                onEnded={() => {
+                    record('track-end');
+                    if (intendToPlayRef.current) playNext(true);
+                }}
                 onTimeUpdate={handleTimeUpdate}
                 onLoadedMetadata={handleTimeUpdate}
-                onCanPlay={attemptResume}
+                onCanPlay={() => attemptResume('canplay')}
                 onPlaying={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
                 onError={handleAudioError}
@@ -484,6 +534,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ audios: initialAudios,
                     borderTop: '1px solid rgba(255,255,255,0.1)',
                     paddingTop: '1rem'
                 }}>
+                    {diagnosticControls}
                     {audios.map((track, index) => (
                         <div
                             key={track.id}
